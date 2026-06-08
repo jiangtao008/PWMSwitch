@@ -62,10 +62,10 @@ void Control_Update(void)
     /* ── 坦克混控 demo（替换成你自己的逻辑） ──────────────── */
 
     int16_t thr   = (int16_t)in_ch_2 - 50;   /* CH2 油门:  -50..+50 */
-    int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
+    // int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
 
-    int16_t left  = thr + steer;
-    int16_t right = thr - steer;
+    int16_t left  = thr;
+    int16_t right = thr;
 
     if (left  >  100) left  =  100;
     if (left  < -100) left  = -100;
@@ -74,14 +74,14 @@ void Control_Update(void)
 
     if (left >= 0) { out_ch_1 = (uint8_t)left;  out_ch_2 = 0; }
     else           { out_ch_1 = 0;  out_ch_2 = (uint8_t)(-left); }
-
     if (right >= 0) { out_ch_3 = (uint8_t)right;  out_ch_4 = 0; }
     else            { out_ch_3 = 0;  out_ch_4 = (uint8_t)(-right); }
 
-    out_ch_5 = (in_ch_5 > 50) ? 1 : 0;
-    out_ch_6 = (in_ch_6 > 50) ? 1 : 0;
-    out_ch_7 = (in_ch_7 > 50) ? 1 : 0;
-    out_ch_8 = (in_ch_8 > 50) ? 1 : 0;
+    const int switchCenter = 75;
+    out_ch_5 = (in_ch_5 > switchCenter) ? 1 : 0;
+    out_ch_6 = (in_ch_6 > switchCenter) ? 1 : 0;
+    out_ch_7 = (in_ch_7 > switchCenter) ? 1 : 0;
+    out_ch_8 = (in_ch_8 > switchCenter) ? 1 : 0;
 
     /* ============================================================
      *  转换逻辑结束

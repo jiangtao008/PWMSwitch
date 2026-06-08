@@ -11,6 +11,7 @@
 | 构建工具 | PlatformIO |
 | 调试/烧录 | J-Link SWD |
 | 板载 LED | PC13 |
+| OLED 显示屏 | SSD1306 128×64, I2C 接口 |
 
 ### 时钟配置
 
@@ -103,6 +104,20 @@ PWM 输出 CH4 ──→ PB9  (TIM4_CH4)
 | 7 | 数字输出 | — | PB14 | 0/1, 阈值 1500µs |
 | 8 | 数字输出 | — | PB15 | 0/1, 阈值 1500µs |
 
+### OLED 显示屏（I2C）
+
+```
+SSD1306 SCL ──→ PB10 (I2C2_SCL)
+SSD1306 SDA ──→ PB11 (I2C2_SDA)
+SSD1306 VCC ──→ 3.3V
+SSD1306 GND ──→ GND
+```
+
+| 引脚 | 功能 | 说明 |
+|------|------|------|
+| PB10 | I2C2_SCL | SSD1306 时钟线 |
+| PB11 | I2C2_SDA | SSD1306 数据线 |
+
 ---
 
 ## 测量方案
@@ -151,6 +166,56 @@ pulse = fall_time - rise_time;
 
 - 脉宽范围：**500µs ~ 2500µs**
 - 超出此范围的视为无效/噪声
+
+---
+
+## OLED 显示屏（SSD1306 128×64）
+
+### 硬件参数
+
+| 参数 | 值 |
+|------|----|
+| 驱动芯片 | SSD1306 |
+| 分辨率 | 128 × 64 像素 |
+| 接口 | I2C（I2C2） |
+| I2C 地址 | 0x3C（7-bit） |
+| I2C 速率 | 400 kHz（Fast Mode） |
+| 帧缓冲 | 1024 字节（128×64/8） |
+| 字体 | 8×8 像素，ASCII 32~126（96 字符） |
+
+### 屏幕布局
+
+```
+┌──────────────────────┬──────────────────────┐
+│  左半屏 64×64（输入） │ 右半屏 64×64（输出）  │
+│                      │                      │
+│  1 [========        ] │ 1 [============    ] │ ← PWM 0~100%
+│  2 [=====           ] │ 2 [======          ] │
+│  3 [==========      ] │ 3 [==========      ] │
+│  4 [===             ] │ 4 [=============== ] │
+│  5 [=============== ] │ 5 ON                 │ ← 数字 0/1
+│  6 [======          ] │ 6 --                 │
+│  7 [==========      ] │ 7 ON                 │
+│  8 [=======         ] │ 8 --                 │
+│                      │                      │
+│  每行8px高，共8行      │  同上                │
+│  左8px=通道号          │  左8px=通道号         │
+│  右56px=进度条(横向)    │  右56px=进度条/ON-OFF  │
+└──────────────────────┴──────────────────────┘
+```
+
+### 进度条规格
+
+| 参数 | 值 |
+|------|----|
+| 每行高度 | 8 像素 |
+| 通道号区域 | 8×8 像素（左端） |
+| 进度条区域 | 56×8 像素（含 1px 边框） |
+| 内部填充区 | 54×6 像素 |
+| 填充方向 | 从左到右（横向） |
+| 0% | 仅显示空框 |
+| 50% | 填充左半（27px） |
+| 100% | 填满整个框 |
 
 ---
 
@@ -231,13 +296,19 @@ PWMSwitch/
 ├── platformio.ini              # PlatformIO 项目配置
 ├── plan.md                     # 本文件
 ├── src/
-│   ├── main.c                  # 主程序：输入→输出映射 + LED 心跳
+│   ├── main.c                  # 入口：初始化 + LED 心跳
+│   ├── control.h               # 控制逻辑头文件
+│   ├── control.c               # ★ 输入→输出转换（用户修改此文件）
 │   ├── pwm_input.h             # PWM 输入捕获 API（TIM2+TIM3）
 │   ├── pwm_input.c             # 输入捕获实现
 │   ├── pwm_output.h            # PWM 输出 API（TIM4）
 │   ├── pwm_output.c            # PWM 输出实现
 │   ├── digital_output.h        # 数字输出 API
-│   └── digital_output.c        # 数字输出实现 (PB12~15)
+│   ├── digital_output.c        # 数字输出实现 (PB12~15)
+│   ├── ssd1306.h               # SSD1306 OLED 驱动 API
+│   ├── ssd1306.c               # I2C 驱动 + 帧缓冲 + 8×8 字体
+│   ├── display.h               # 应用 UI 渲染 API
+│   └── display.c               # 左右面板布局渲染
 ├── include/
 ├── lib/
 └── test/
@@ -267,6 +338,26 @@ void PWM_Output_Set(uint8_t channel, uint8_t pct); // 0~100%
 ```c
 void Digital_Output_Init(void);                  // 初始化 PB12~PB15
 void Digital_Output_Set(uint8_t channel, uint8_t val); // 0=LOW, 1=HIGH
+```
+
+#### ssd1306
+
+```c
+void SSD1306_Init(void);                         // 初始化 I2C2 + SSD1306
+void SSD1306_Clear(void);                        // 清空帧缓冲
+void SSD1306_Flush(void);                        // 帧缓冲写入屏幕
+void SSD1306_FillRect(x, y, w, h, color);        // 填充矩形
+void SSD1306_DrawRect(x, y, w, h, color);        // 空心矩形
+void SSD1306_DrawChar(x, y, c);                  // 8×8 字符
+void SSD1306_DrawString(x, y, s);                // 字符串
+void SSD1306_DrawNumber(x, y, num);              // 两位数 (00~99)
+```
+
+#### display
+
+```c
+void Display_Init(void);                         // 初始化 SSD1306
+void Display_Update(in_pct[8], out_pct[4], out_dig[4]);  // 渲染一帧
 ```
 
 ### main.c 行为
@@ -328,10 +419,11 @@ pio debug
 
 | 资源 | 使用量 | 占比 |
 |------|--------|------|
-| RAM | 356 字节 | 1.7% |
-| Flash | 4652 字节 | 7.1% |
+| RAM | 1464 字节 | 7.1% |
+| Flash | 7940 字节 | 12.1% |
 | 定时器 | TIM2, TIM3, TIM4 | — |
 | 中断 | TIM2_IRQn, TIM3_IRQn | — |
+| I2C | I2C2 (PB10/PB11) | SSD1306 OLED |
 | GPIO 输入 | PA0~PA3, PA6~PA7, PB0~PB1 | 8 路 |
 | GPIO 输出 | PB6~PB9, PB12~PB15, PC13 | 9 路 |
  
