@@ -142,6 +142,22 @@ uint8_t PWM_Input_IsValid(uint8_t channel)
     return pwm_valid[channel];
 }
 
+/**
+ * @brief  Read channel as 0~100%, failsafe to 50% (neutral).
+ */
+uint8_t PWM_Input_GetPercent(uint8_t channel)
+{
+    if (channel >= PWM_CHANNEL_COUNT) return 50;
+
+    if (!pwm_valid[channel])
+        return 50;   /* failsafe: neutral / center */
+
+    uint32_t pulse = pwm_pulse[channel];
+    if (pulse <= 1000U) return 0;
+    if (pulse >= 2000U) return 100;
+    return (uint8_t)((pulse - 1000U) * 100U / 1000U);
+}
+
 /* ── ISR entry points ──────────────────────────────────────────────── */
 
 void TIM2_IRQHandler(void)

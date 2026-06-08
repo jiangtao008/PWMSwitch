@@ -38,6 +38,14 @@ uint32_t PWM_Input_Read(uint8_t channel);
  */
 uint8_t PWM_Input_IsValid(uint8_t channel);
 
+/**
+ * @brief  Read channel as 0~100 percentage.
+ *         Maps 1000~2000µs → 0~100%, clamped.  Center = 50%.
+ * @param  channel  0~7
+ * @return 0~100 (returns 50 if no valid signal → failsafe neutral)
+ */
+uint8_t PWM_Input_GetPercent(uint8_t channel);
+
 #ifdef __cplusplus
 }
 #endif
