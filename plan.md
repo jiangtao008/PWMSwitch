@@ -1,4 +1,4 @@
-# 8 通道 RC 接收机 PWM 信号读取 + 8 路输出
+# 8 通道 RC 接收机 PWM 信号转换器
 
 ## 硬件平台
 
@@ -94,10 +94,10 @@ PWM 输出 CH4 ──→ PB9  (TIM4_CH4)
 
 | 通道 | 功能 | 定时器 | 引脚 | 说明 |
 |------|------|--------|------|------|
-| 1 | PWM 输出 | TIM4 | PB6 | 左电机正转 |
-| 2 | PWM 输出 | TIM4 | PB7 | 左电机反转 |
-| 3 | PWM 输出 | TIM4 | PB8 | 右电机正转 |
-| 4 | PWM 输出 | TIM4 | PB9 | 右电机反转 |
+| 1 | PWM 输出 | TIM4 | PB6 | PWM 通道 1 |
+| 2 | PWM 输出 | TIM4 | PB7 | PWM 通道 2 |
+| 3 | PWM 输出 | TIM4 | PB8 | PWM 通道 3 |
+| 4 | PWM 输出 | TIM4 | PB9 | PWM 通道 4 |
 | 5 | 数字输出 | — | PB12 | 0/1, 阈值 1500µs |
 | 6 | 数字输出 | — | PB13 | 0/1, 阈值 1500µs |
 | 7 | 数字输出 | — | PB14 | 0/1, 阈值 1500µs |
@@ -154,7 +154,9 @@ pulse = fall_time - rise_time;
 
 ---
 
-## 坦克车控制逻辑
+## 默认映射逻辑（坦克混控演示）
+
+项目内置一组坦克差速转向混控作为演示示例，展示如何将 CH1/CH2 摇杆输入映射为双电机控制。你可以自由替换为任意映射逻辑。
 
 ### 摇杆输入（CH1、CH2）
 
@@ -165,7 +167,7 @@ pulse = fall_time - rise_time;
 
 摇杆默认居中（1500µs = 0%），CH3~CH8 预留。
 
-### 坦克混控算法
+### 坦克混控算法（演示）
 
 ```
 left  = throttle + steering
@@ -184,20 +186,20 @@ right = throttle - steering
 | 原地左转 | 0 | -100 | -100 | +100 | 左后右前自旋 |
 | 前进行进中右转 | +100 | +50 | +150→+100 | +50 | 左快右慢右转 |
 
-### 输出通道 CH1~CH4：电机 PWM（TIM4）
+### 输出通道 CH1~CH4：PWM（TIM4）
 
-每组电机两个 PWM 通道，分别控制 H 桥的正转/反转：
+每组输出两个 PWM 通道，配合使用可控制 H 桥的正转/反转：
 
 | 输出 | 引脚 | 功能 |
 |------|------|------|
-| CH1 | PB6 (TIM4_CH1) | 左电机正转 |
-| CH2 | PB7 (TIM4_CH2) | 左电机反转 |
-| CH3 | PB8 (TIM4_CH3) | 右电机正转 |
-| CH4 | PB9 (TIM4_CH4) | 右电机反转 |
+| CH1 | PB6 (TIM4_CH1) | PWM 通道 1 |
+| CH2 | PB7 (TIM4_CH2) | PWM 通道 2 |
+| CH3 | PB8 (TIM4_CH3) | PWM 通道 3 |
+| CH4 | PB9 (TIM4_CH4) | PWM 通道 4 |
 
-**混控输出规则**：
-- left ≥ 0 → CH1 = left%, CH2 = 0%（正转）
-- left < 0 → CH1 = 0%, CH2 = |left|%（反转）
+**混控输出规则**（演示示例）：
+- left ≥ 0 → CH1 = left%, CH2 = 0%
+- left < 0 → CH1 = 0%, CH2 = |left|%
 - right 同理映射到 CH3/CH4
 
 ### PWM 参数
@@ -273,8 +275,8 @@ void Digital_Output_Set(uint8_t channel, uint8_t val); // 0=LOW, 1=HIGH
 
 | 输入 | 输出 | 映射逻辑 |
 |------|------|----------|
-| CH1 (转向) | PWM CH1~CH4 | 坦克混控（steering） |
-| CH2 (油门) | PWM CH1~CH4 | 坦克混控（throttle） |
+| CH1 (转向) | PWM CH1~CH4 | 默认映射（steering） |
+| CH2 (油门) | PWM CH1~CH4 | 默认映射（throttle） |
 | CH3~CH4 有效 | — | 读取但暂未使用 |
 | CH5 有效 | DO CH5 | 脉宽 > 1500µs → HIGH |
 | CH6 有效 | DO CH6 | 同上 |
