@@ -38,25 +38,29 @@ void Control_Update(void)
     uint8_t in_ch_8 = PWM_Input_GetPercent(7);
 
     /* ── 输出变量（默认值）───────────────────────────────────── */
-    uint8_t out_ch_1 = 0;    /* PWM  0~100 */
-    uint8_t out_ch_2 = 0;
-    uint8_t out_ch_3 = 0;
-    uint8_t out_ch_4 = 0;
-    uint8_t out_ch_5 = 0;    /* 数字 0/1 */
-    uint8_t out_ch_6 = 0;
-    uint8_t out_ch_7 = 0;
-    uint8_t out_ch_8 = 0;
+    uint8_t out_ch_1  = 0;    /* PWM  0~100 */
+    uint8_t out_ch_2  = 0;
+    uint8_t out_ch_3  = 0;
+    uint8_t out_ch_4  = 0;
+    uint8_t out_ch_5  = 0;    /* 数字 0/1 */
+    uint8_t out_ch_6  = 0;
+    uint8_t out_ch_7  = 0;
+    uint8_t out_ch_8  = 0;
+    uint8_t out_ch_9  = 0;    /* 新增数字 0/1 (PA15) */
+    uint8_t out_ch_10 = 0;    /* (PB3) */
+    uint8_t out_ch_11 = 0;    /* (PB4) */
+    uint8_t out_ch_12 = 0;    /* (PB5) */
 
-    (void)in_ch_3; (void)in_ch_4;   /* demo 未用，消 warning */
+    (void)in_ch_3; (void)in_ch_4; (void)in_ch_7; (void)in_ch_8;   /* demo 未用，消 warning */
 
     /* ============================================================
      *  从此处开始：输入 → 输出 转换逻辑
      *
      *  可用变量:
-     *    in_ch_1 ~ in_ch_8   (uint8_t, 0~100)
+     *    in_ch_1 ~ in_ch_8    (uint8_t, 0~100)
      *  要赋值的变量:
-     *    out_ch_1 ~ out_ch_4  (uint8_t, 0~100, PWM 占空比)
-     *    out_ch_5 ~ out_ch_8  (uint8_t, 0 或 1, 数字输出)
+     *    out_ch_1 ~ out_ch_4   (uint8_t, 0~100, PWM 占空比)
+     *    out_ch_5 ~ out_ch_12  (uint8_t, 0 或 1, 数字输出)
      * ============================================================ */
 
     /* ── 坦克混控 demo（替换成你自己的逻辑） ──────────────── */
@@ -83,6 +87,12 @@ void Control_Update(void)
     out_ch_7 = (in_ch_7 > 50) ? 1 : 0;
     out_ch_8 = (in_ch_8 > 50) ? 1 : 0;
 
+    /* ── 新增数字输出 CH9~CH12 直通（改用 in_ch_5~in_ch_8） ── */
+    out_ch_9  = (in_ch_5 > 50) ? 1 : 0;
+    out_ch_10 = (in_ch_6 > 50) ? 1 : 0;
+    out_ch_11 = (in_ch_7 > 50) ? 1 : 0;
+    out_ch_12 = (in_ch_8 > 50) ? 1 : 0;
+
     /* ============================================================
      *  转换逻辑结束
      * ============================================================ */
@@ -97,12 +107,17 @@ void Control_Update(void)
     Digital_Output_Set(1, out_ch_6);
     Digital_Output_Set(2, out_ch_7);
     Digital_Output_Set(3, out_ch_8);
+    Digital_Output_Set(4, out_ch_9);
+    Digital_Output_Set(5, out_ch_10);
+    Digital_Output_Set(6, out_ch_11);
+    Digital_Output_Set(7, out_ch_12);
 
     /* ── Update display ──────────────────────────────────────── */
-    const uint8_t in_arr[8]  = {in_ch_1, in_ch_2, in_ch_3, in_ch_4,
-                                in_ch_5, in_ch_6, in_ch_7, in_ch_8};
-    const uint8_t out_pct[4] = {out_ch_1, out_ch_2, out_ch_3, out_ch_4};
-    const uint8_t out_dig[4] = {out_ch_5, out_ch_6, out_ch_7, out_ch_8};
+    const uint8_t in_arr[8]   = {in_ch_1, in_ch_2, in_ch_3, in_ch_4,
+                                 in_ch_5, in_ch_6, in_ch_7, in_ch_8};
+    const uint8_t out_pct[4]  = {out_ch_1, out_ch_2, out_ch_3, out_ch_4};
+    const uint8_t out_dig[8]  = {out_ch_5, out_ch_6, out_ch_7, out_ch_8,
+                                 out_ch_9, out_ch_10, out_ch_11, out_ch_12};
 
     Display_Update(in_arr, out_pct, out_dig);
 }

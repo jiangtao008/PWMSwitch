@@ -103,11 +103,11 @@
 | **默认频率** | 10kHz (可通过 `pwm_output_freq_hz` 动态调整) |
 | **占空比** | 0~100% → 计算 CCR = percent × (ARR+1) / 100 |
 
-### 3.3 `digital_output` — 4路数字输出
+### 3.3 `digital_output` — 8路数字输出
 
 | 项目 | 说明 |
 |------|------|
-| **GPIO** | PB12, PB13, PB14, PB15 |
+| **GPIO** | CH1~CH4: PB12~PB15, CH5: PA15, CH6~CH8: PB3~PB5 |
 | **模式** | 推挽输出, 低电平初始 |
 | **值域** | 0 = LOW, 非0 = HIGH |
 
@@ -286,6 +286,10 @@ flowchart LR
 | **数字输出 CH2** | PB13 | GPIO | 开关量输出6 |
 | **数字输出 CH3** | PB14 | GPIO | 开关量输出7 |
 | **数字输出 CH4** | PB15 | GPIO | 开关量输出8 |
+| **数字输出 CH5** | PA15 | GPIO | 新增开关量 (原 JTDI) |
+| **数字输出 CH6** | PB3  | GPIO | 新增开关量 (原 JTDO) |
+| **数字输出 CH7** | PB4  | GPIO | 新增开关量 (原 NJTRST) |
+| **数字输出 CH8** | PB5  | GPIO | 新增开关量 |
 | **OLED SCL** | PB10 | I2C2_SCL | SSD1306时钟 |
 | **OLED SDA** | PB11 | I2C2_SDA | SSD1306数据 |
 | **LED** | PC13 | GPIO | 心跳指示灯 (板载) |
