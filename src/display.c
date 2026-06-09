@@ -1,6 +1,6 @@
 /**
  * @file    display.c
- * @brief   128×64 OLED UI — 8-ch input bars + 8-ch output indicators.
+ * @brief   128×64 OLED UI — 8-ch input bars + 12-ch output indicators.
  */
 
 #include "display.h"
@@ -51,7 +51,7 @@ void Display_Init(void)
 
 void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_pct[4],
-                    const uint8_t out_dig[4])
+                    const uint8_t out_dig[8])
 {
     SSD1306_Clear();
 
@@ -80,19 +80,42 @@ void Display_Update(const uint8_t in_pct[8],
         draw_bar(RIGHT_X + BAR_X_L, y0, out_pct[i]);
     }
 
+    /* ── Draw a checked/unchecked box ──────────────────────────── */
+#define DRAW_BOX(x, y, on)  do {                                   \
+        if (on) {                                                   \
+            SSD1306_FillRect(x, y, 6, 6, 1);                       \
+        } else {                                                    \
+            SSD1306_DrawRect(x, y, 6, 6, 1);                       \
+        }                                                           \
+    } while (0)
+
     for (uint8_t i = 0; i < 4; i++) {
         uint8_t y0 = (i + 4) * ROW_H;
 
-        /* Label '5'~'8' (digital outputs) */
-        SSD1306_DrawChar(RIGHT_X, y0, '5' + i);
-
-        /* ON / OFF text */
-        if (out_dig[i]) {
-            SSD1306_DrawString(RIGHT_X + BAR_X_L, y0, "ON");
+        /* ── First digital on this row ──────────────────────── */
+        uint8_t ch0 = 5 + i * 2;          /* 5,7,9,11 */
+        if (ch0 >= 10) {
+            SSD1306_DrawChar(RIGHT_X + 0,  y0, '1');
+            SSD1306_DrawChar(RIGHT_X + 8,  y0, '0' + ch0 - 10);
+            DRAW_BOX(RIGHT_X + 17, y0 + 1, out_dig[i * 2]);
         } else {
-            SSD1306_DrawString(RIGHT_X + BAR_X_L, y0, "--");
+            SSD1306_DrawChar(RIGHT_X + 0,  y0, '0' + ch0);
+            DRAW_BOX(RIGHT_X + 9,  y0 + 1, out_dig[i * 2]);
+        }
+
+        /* ── Second digital on this row ─────────────────────── */
+        uint8_t ch1 = 6 + i * 2;          /* 6,8,10,12 */
+        if (ch1 >= 10) {
+            SSD1306_DrawChar(RIGHT_X + 32, y0, '1');
+            SSD1306_DrawChar(RIGHT_X + 40, y0, '0' + ch1 - 10);
+            DRAW_BOX(RIGHT_X + 49, y0 + 1, out_dig[i * 2 + 1]);
+        } else {
+            SSD1306_DrawChar(RIGHT_X + 32, y0, '0' + ch1);
+            DRAW_BOX(RIGHT_X + 41, y0 + 1, out_dig[i * 2 + 1]);
         }
     }
+
+#undef DRAW_BOX
 
     SSD1306_Flush();
 }
