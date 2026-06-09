@@ -13,6 +13,8 @@
 #include "digital_output.h"
 #include "display.h"
 
+#define ABS(x)  ((x) < 0 ? -(x) : (x))
+
 /* ═══════════════════════════════════════════════════════════════════
  *  下面的 Init 和 Update 外层框架不要动
  *  只改 Update 中间标记出来的转换逻辑
@@ -53,18 +55,7 @@ void Control_Update(void)
 
     (void)in_ch_3; (void)in_ch_4; (void)in_ch_7; (void)in_ch_8;   /* demo 未用，消 warning */
 
-    /* ============================================================
-     *  从此处开始：输入 → 输出 转换逻辑
-     *
-     *  可用变量:
-     *    in_ch_1 ~ in_ch_8    (uint8_t, 0~100)
-     *  要赋值的变量:
-     *    out_ch_1 ~ out_ch_4   (uint8_t, 0~100, PWM 占空比)
-     *    out_ch_5 ~ out_ch_12  (uint8_t, 0 或 1, 数字输出)
-     * ============================================================ */
-
     /* ── 坦克混控 demo（替换成你自己的逻辑） ──────────────── */
-
     int16_t thr   = (int16_t)in_ch_2 - 50;   /* CH2 油门:  -50..+50 */
     int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
 
@@ -76,33 +67,21 @@ void Control_Update(void)
     if (right >  100) right =  100;
     if (right < -100) right = -100;
 
-    if (left >= 0) { out_ch_1 = (uint8_t)left;  out_ch_2 = 0; }
-    else           { out_ch_1 = 0;  out_ch_2 = (uint8_t)(-left); }
+    // 输出量
+    out_ch_1 = (uint8_t)ABS(left);
+    out_ch_9  = (left < 0) ? 1 : 0;
+    out_ch_10 = (left >= 0) ? 1 : 0;
 
-    if (right >= 0) { out_ch_3 = (uint8_t)right;  out_ch_4 = 0; }
-    else            { out_ch_3 = 0;  out_ch_4 = (uint8_t)(-right); }
+    out_ch_2 = (uint8_t)ABS(left);
+    out_ch_11 = (right < 0) ? 1 : 0;
+    out_ch_12 = (right >= 0) ? 1 : 0;
 
     out_ch_5 = (in_ch_5 > 50) ? 1 : 0;
     out_ch_6 = (in_ch_6 > 50) ? 1 : 0;
     out_ch_7 = (in_ch_7 > 50) ? 1 : 0;
     out_ch_8 = (in_ch_8 > 50) ? 1 : 0;
 
-    /* ── 新增数字输出 CH9~CH12 直通（改用 in_ch_5~in_ch_8） ── */
-    out_ch_9  = (in_ch_5 > 50) ? 1 : 0;
-    out_ch_10 = (in_ch_6 > 50) ? 1 : 0;
-    out_ch_11 = (in_ch_7 > 50) ? 1 : 0;
-    out_ch_12 = (in_ch_8 > 50) ? 1 : 0;
-
-    /* ============================================================
-     *  转换逻辑结束
-     * ============================================================ */
-
     /* ── 写入输出 ──────────────────────────────────────────── */
-    PWM_Output_Set(0, out_ch_1);
-    PWM_Output_Set(1, out_ch_2);
-    PWM_Output_Set(2, out_ch_3);
-    PWM_Output_Set(3, out_ch_4);
-
     Digital_Output_Set(0, out_ch_5);
     Digital_Output_Set(1, out_ch_6);
     Digital_Output_Set(2, out_ch_7);
@@ -111,6 +90,11 @@ void Control_Update(void)
     Digital_Output_Set(5, out_ch_10);
     Digital_Output_Set(6, out_ch_11);
     Digital_Output_Set(7, out_ch_12);
+
+    PWM_Output_Set(0, out_ch_1);
+    PWM_Output_Set(1, out_ch_2);
+    PWM_Output_Set(2, out_ch_3);
+    PWM_Output_Set(3, out_ch_4);
 
     /* ── Update display ──────────────────────────────────────── */
     const uint8_t in_arr[8]   = {in_ch_1, in_ch_2, in_ch_3, in_ch_4,
