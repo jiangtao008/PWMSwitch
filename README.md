@@ -53,7 +53,7 @@
 | 板载 LED | PC13 | (内置) |
 
 ### 固件烧录
-
+项目基于vscode的platformIO插件平台，使用 STM32Cube HAL 库进行嵌入式软件开发。
 ```bash
 # 安装 PlatformIO（如未安装）
 pip install platformio
