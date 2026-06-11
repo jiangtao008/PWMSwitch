@@ -53,7 +53,7 @@ void Control_Update(void)
     uint8_t out_ch_11 = 0;    /* (PB4) */
     uint8_t out_ch_12 = 0;    /* (PB5) */
 
-    (void)in_ch_3; (void)in_ch_4; (void)in_ch_7; (void)in_ch_8;   /* demo 未用，消 warning */
+    // (void)in_ch_3; (void)in_ch_4;   /* demo 未用，消 warning */
 
     /* ── 坦克混控 ──────────────── */
     int16_t thr   = (int16_t)in_ch_2 - 50;   /* CH2 油门:  -50..+50 */
@@ -72,7 +72,7 @@ void Control_Update(void)
 
     // 输出量
     out_ch_1 = (uint8_t)ABS(left);
-    if(out_ch_1 < 5){
+    if(out_ch_1 <1){
         out_ch_9 = 1;
         out_ch_10 = 1;
     } else {
@@ -81,7 +81,7 @@ void Control_Update(void)
     }
 
     out_ch_2 = (uint8_t)ABS(right);
-    if(out_ch_2 < 5){
+    if(out_ch_2 < 1){
         out_ch_11 = 1;
         out_ch_12 = 1;
     } else {
