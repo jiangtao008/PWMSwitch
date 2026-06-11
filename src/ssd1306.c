@@ -173,6 +173,7 @@ void SSD1306_Init(void)
     i2c_write_cmd(0x40);   /* start line = 0 */
     i2c_write_cmd(0x8D);   /* charge pump */
     i2c_write_cmd(0x14);
+    HAL_Delay(100);        /* wait for charge pump stabilisation */
     i2c_write_cmd(0x20);   /* memory mode: horizontal */
     i2c_write_cmd(0x00);
     i2c_write_cmd(0xA1);   /* segment remap: col 127 = SEG0 */
