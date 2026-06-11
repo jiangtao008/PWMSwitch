@@ -161,7 +161,7 @@ void SSD1306_Init(void)
     HAL_I2C_Init(&hi2c2);
 
     /* ── SSD1306 init sequence ─────────────────────────────── */
-    HAL_Delay(10);
+    HAL_Delay(200);       /* wait for OLED module power-up */
 
     i2c_write_cmd(0xAE);   /* display off */
     i2c_write_cmd(0xD5);   /* clock div */
