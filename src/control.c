@@ -55,12 +55,15 @@ void Control_Update(void)
 
     (void)in_ch_3; (void)in_ch_4; (void)in_ch_7; (void)in_ch_8;   /* demo 未用，消 warning */
 
-    /* ── 坦克混控 demo（替换成你自己的逻辑） ──────────────── */
+    /* ── 坦克混控 ──────────────── */
     int16_t thr   = (int16_t)in_ch_2 - 50;   /* CH2 油门:  -50..+50 */
-    // int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
+    int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
 
-    int16_t left  = thr;
-    int16_t right = thr;
+    thr *= 2;   // -100  +100
+    steer *= 2;   // -100  +100
+
+    int16_t left  = thr + steer;
+    int16_t right = thr - steer;
 
     if (left  >  100) left  =  100;
     if (left  < -100) left  = -100;
@@ -69,12 +72,22 @@ void Control_Update(void)
 
     // 输出量
     out_ch_1 = (uint8_t)ABS(left);
-    out_ch_9  = (left < 0) ? 1 : 0;
-    out_ch_10 = (left >= 0) ? 1 : 0;
+    if(out_ch_1 < 5){
+        out_ch_9 = 1;
+        out_ch_10 = 1;
+    } else {
+        out_ch_9  = (left < 0) ? 1 : 0;
+        out_ch_10 = (left >= 0) ? 1 : 0;
+    }
 
-    out_ch_2 = (uint8_t)ABS(left);
+    out_ch_2 = (uint8_t)ABS(right);
+    if(out_ch_2 < 5){
+        out_ch_11 = 1;
+        out_ch_12 = 1;
+    } else {
     out_ch_11 = (right < 0) ? 1 : 0;
     out_ch_12 = (right >= 0) ? 1 : 0;
+    }
 
     const int switchCenter = 75;
     out_ch_5 = (in_ch_5 > switchCenter) ? 1 : 0;
