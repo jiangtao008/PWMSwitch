@@ -53,40 +53,45 @@ void Control_Update(void)
     uint8_t out_ch_11 = 0;    /* (PB4) */
     uint8_t out_ch_12 = 0;    /* (PB5) */
 
-    // (void)in_ch_3; (void)in_ch_4;   /* demo 未用，消 warning */
+    /* ── 坦克差速混控 ────────── */
+    /* CH2 油门, CH1 转向, 50=中位 */
+    int16_t thr   = (int16_t)in_ch_2 - 50;
+    int16_t steer = (int16_t)in_ch_1 - 50;
 
-    /* ── 坦克混控 ──────────────── */
-    int16_t thr   = (int16_t)in_ch_2 - 50;   /* CH2 油门:  -50..+50 */
-    int16_t steer = (int16_t)in_ch_1 - 50;   /* CH1 转向:  -50..+50 */
-
-    thr *= 2;   // -100  +100
-    steer *= 2;   // -100  +100
+    thr   *= 2;   /* -100..+100 */
+    /* steer 不放大，降低转向灵敏度 */
 
     int16_t left  = thr + steer;
     int16_t right = thr - steer;
 
+    /* 限幅 */
     if (left  >  100) left  =  100;
     if (left  < -100) left  = -100;
     if (right >  100) right =  100;
     if (right < -100) right = -100;
 
-    // 输出量
-    out_ch_1 = (uint8_t)ABS(left);
-    if(out_ch_1 <1){
-        out_ch_9 = 1;
-        out_ch_10 = 1;
+    /* 左电机 */
+    if (left > 3) {
+        out_ch_1 = 0;
+        out_ch_2 = (uint8_t)left;       /* 正转 */
+    } else if (left < -3) {
+        out_ch_1 = (uint8_t)(-left);    /* 反转 */
+        out_ch_2 = 0;
     } else {
-        out_ch_9  = (left < 0) ? 1 : 0;
-        out_ch_10 = (left >= 0) ? 1 : 0;
+        out_ch_1 = 0;                   /* 死区 */
+        out_ch_2 = 0;
     }
 
-    out_ch_2 = (uint8_t)ABS(right);
-    if(out_ch_2 < 1){
-        out_ch_11 = 1;
-        out_ch_12 = 1;
+    /* 右电机 */
+    if (right > 3) {
+        out_ch_3 = 0;
+        out_ch_4 = (uint8_t)right;      /* 正转 */
+    } else if (right < -3) {
+        out_ch_3 = (uint8_t)(-right);   /* 反转 */
+        out_ch_4 = 0;
     } else {
-    out_ch_11 = (right < 0) ? 1 : 0;
-    out_ch_12 = (right >= 0) ? 1 : 0;
+        out_ch_3 = 0;                   /* 死区 */
+        out_ch_4 = 0;
     }
 
     const int switchCenter = 75;

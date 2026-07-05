@@ -2,7 +2,7 @@
  * @file    pwm_output.c
  * @brief   4-ch PWM output — TIM4 CH1~CH4 on PB6~PB9
  *
- * Timer clock 8 MHz (HSI).  Default frequency 10 kHz → ARR = 799.
+ * Timer clock 8 MHz (HSI).  Default frequency 1 kHz → ARR = 7999.
  * Duty stored as percentage, recalculated when frequency changes.
  */
 
@@ -13,7 +13,7 @@
 #define TIMER_CLOCK  8000000U    /* HSI, APB1 prescaler = 1 */
 
 /* ── Global frequency variable ─────────────────────────────────────── */
-uint32_t pwm_output_freq_hz = 10000;   /* 10 kHz default */
+uint32_t pwm_output_freq_hz = 1000;    /* 1 kHz default */
 
 /* ── Internal state ────────────────────────────────────────────────── */
 static TIM_HandleTypeDef htim4;
@@ -79,6 +79,9 @@ void PWM_Output_Init(void)
     HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
     HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+
+    /* Generate update event to load ARR/CCR shadow registers immediately */
+    TIM4->EGR = TIM_EGR_UG;
 }
 
 void PWM_Output_ApplyFreq(void)
