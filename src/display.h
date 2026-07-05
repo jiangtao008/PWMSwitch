@@ -33,6 +33,13 @@ void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_pct[4],
                     const uint8_t out_dig[8]);
 
+/**
+ * @brief  Overlay motor speed on bottom-right of display.
+ * @param  left_period   Left  motor pulse period in timer ticks (0 = no signal)
+ * @param  right_period  Right motor pulse period in timer ticks
+ */
+void Display_ShowSpeed(uint32_t left_period, uint32_t right_period);
+
 #ifdef __cplusplus
 }
 #endif

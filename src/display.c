@@ -6,6 +6,7 @@
 #include "display.h"
 #include "ssd1306.h"
 #include <string.h>
+#include <stdio.h>
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 #define ROW_H       8
@@ -116,6 +117,23 @@ void Display_Update(const uint8_t in_pct[8],
     }
 
 #undef DRAW_BOX
+
+    SSD1306_Flush();
+}
+
+/* ── Speed overlay (bottom-right of right panel) ─────────────────────── */
+
+void Display_ShowSpeed(uint32_t left_period, uint32_t right_period)
+{
+    char buf[12];
+
+    /* Row 6 (y=48): left motor */
+    snprintf(buf, sizeof(buf), "L:%5lu", left_period);
+    SSD1306_DrawString(64, 48, buf);
+
+    /* Row 7 (y=56): right motor */
+    snprintf(buf, sizeof(buf), "R:%5lu", right_period);
+    SSD1306_DrawString(64, 56, buf);
 
     SSD1306_Flush();
 }

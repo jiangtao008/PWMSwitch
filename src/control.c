@@ -12,6 +12,7 @@
 #include "pwm_output.h"
 #include "digital_output.h"
 #include "display.h"
+#include "speed_sensor.h"
 
 #define ABS(x)  ((x) < 0 ? -(x) : (x))
 
@@ -25,6 +26,7 @@ void Control_Init(void)
     PWM_Input_Init();
     PWM_Output_Init();
     Digital_Output_Init();
+    SpeedSensor_Init();
 }
 
 void Control_Update(void)
@@ -70,7 +72,7 @@ void Control_Update(void)
     if (right >  100) right =  100;
     if (right < -100) right = -100;
 
-    /* 左电机 */
+    /* 左电机 (CH1/CH2) */
     if (left > 3) {
         out_ch_1 = 0;
         out_ch_2 = (uint8_t)left;       /* 正转 */
@@ -82,7 +84,7 @@ void Control_Update(void)
         out_ch_2 = 0;
     }
 
-    /* 右电机 */
+    /* 右电机 (CH3/CH4) */
     if (right > 3) {
         out_ch_3 = 0;
         out_ch_4 = (uint8_t)right;      /* 正转 */
@@ -123,4 +125,9 @@ void Control_Update(void)
                                  out_ch_9, out_ch_10, out_ch_11, out_ch_12};
 
     Display_Update(in_arr, out_pct, out_dig);
+
+    /* ── 读取速度（仅观测，不参与控制）───────────────────── */
+    uint32_t l_period = SpeedSensor_GetPeriod(MOTOR_LEFT);
+    uint32_t r_period = SpeedSensor_GetPeriod(MOTOR_RIGHT);
+    Display_ShowSpeed(l_period, r_period);
 }
