@@ -60,8 +60,10 @@ void Control_Update(void)
     int16_t thr   = (int16_t)in_ch_2 - 50;
     int16_t steer = (int16_t)in_ch_1 - 50;
 
+    /* 油门输入死区：±2 以内的偏差直接归零，防接收机中位偏移被 2x 放大 */
+    if (thr > -2 && thr < 2) thr = 0;
     thr   *= 2;   /* -100..+100 */
-    /* steer 不放大，降低转向灵敏度 */
+    steer  = steer * 0.3;   /* 减小转弯幅度 */
 
     int16_t left  = thr + steer;
     int16_t right = thr - steer;
