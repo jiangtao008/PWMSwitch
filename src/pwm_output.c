@@ -2,7 +2,7 @@
  * @file    pwm_output.c
  * @brief   4-ch PWM output — TIM4 CH1~CH4 on PB6~PB9
  *
- * Timer clock 8 MHz (HSI).  Default frequency 1 kHz → ARR = 7999.
+ * Timer clock 8 MHz (HSI).  Default frequency 1.8 kHz → ARR = 4444.
  * Duty stored as percentage, recalculated when frequency changes.
  */
 
@@ -13,7 +13,7 @@
 #define TIMER_CLOCK  8000000U    /* HSI, APB1 prescaler = 1 */
 
 /* ── Global frequency variable ─────────────────────────────────────── */
-uint32_t pwm_output_freq_hz = 1000;    /* 1 kHz default */
+uint32_t pwm_output_freq_hz = 1800;    /* 1.8 kHz — H-bridge 额定 2 kHz 留 10% 余量 */
 
 /* ── Internal state ────────────────────────────────────────────────── */
 static TIM_HandleTypeDef htim4;
