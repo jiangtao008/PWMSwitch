@@ -7,7 +7,8 @@
  * │  CH1 [===   ]    │  O1  [====  ]    │
  * │  CH2 [======]    │  O2  [==    ]    │
  * │  ...             │  ...             │
- * │  CH8 [==    ]    │  O8  ON          │
+ * │  CH8 [==    ]    │  L:+1234         │
+ * │                   │  R:-5678         │
  * └──────────────────┴──────────────────┘
  */
 
@@ -34,11 +35,11 @@ void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_dig[8]);
 
 /**
- * @brief  Overlay motor speed on bottom-right of display.
- * @param  left_period   Left  motor pulse period in timer ticks (0 = no signal)
- * @param  right_period  Right motor pulse period in timer ticks
+ * @brief  Overlay motor encoder position on bottom-right of display.
+ * @param  left_pos   Left  motor encoder counts (signed)
+ * @param  right_pos  Right motor encoder counts (signed)
  */
-void Display_ShowSpeed(uint32_t left_period, uint32_t right_period);
+void Display_ShowSpeed(int32_t left_pos, int32_t right_pos);
 
 #ifdef __cplusplus
 }

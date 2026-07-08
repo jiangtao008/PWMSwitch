@@ -4,7 +4,9 @@
  *
  *  in_ch_1~8  输入通道，值 0~100（摇杆中位=50，无效=50）
  *  out_ch_1~4 PWM 输出，值 0~100（占空比）
- *  out_ch_5~8 数字输出，值 0 或 1
+ *  out_ch_9~12 数字输出，值 0 或 1  (PA15/PB3~PB5)
+ *
+ *  PB12~PB15 已释放给 speed_sensor 做正交编码测速。
  */
 
 #include "control.h"
@@ -46,14 +48,10 @@ void Control_Update(void)
     uint8_t out_ch_2  = 0;
     uint8_t out_ch_3  = 0;
     uint8_t out_ch_4  = 0;
-    uint8_t out_ch_5  = 0;    /* 数字 0/1 */
-    uint8_t out_ch_6  = 0;
-    uint8_t out_ch_7  = 0;
-    uint8_t out_ch_8  = 0;
-    uint8_t out_ch_9  = 0;    /* 新增数字 0/1 (PA15) */
-    uint8_t out_ch_10 = 0;    /* (PB3) */
-    uint8_t out_ch_11 = 0;    /* (PB4) */
-    uint8_t out_ch_12 = 0;    /* (PB5) */
+    uint8_t out_ch_5  = 0;    /* 数字 0/1 (PA15) */
+    uint8_t out_ch_6 = 0;    /* (PB3) */
+    uint8_t out_ch_7 = 0;    /* (PB4) */
+    uint8_t out_ch_8 = 0;    /* (PB5) */
 
     /* ── 坦克差速混控 ────────── */
     /* CH2 油门, CH1 转向, 50=中位 */
@@ -99,7 +97,7 @@ void Control_Update(void)
     }
 
     const int switchCenter = 75;
-    out_ch_5 = (in_ch_5 > switchCenter) ? 1 : 0;
+    out_ch_5  = (in_ch_5 > switchCenter) ? 1 : 0;
     out_ch_6 = (in_ch_6 > switchCenter) ? 1 : 0;
     out_ch_7 = (in_ch_7 > switchCenter) ? 1 : 0;
     out_ch_8 = (in_ch_8 > switchCenter) ? 1 : 0;
@@ -109,10 +107,6 @@ void Control_Update(void)
     Digital_Output_Set(1, out_ch_6);
     Digital_Output_Set(2, out_ch_7);
     Digital_Output_Set(3, out_ch_8);
-    Digital_Output_Set(4, out_ch_9);
-    Digital_Output_Set(5, out_ch_10);
-    Digital_Output_Set(6, out_ch_11);
-    Digital_Output_Set(7, out_ch_12);
 
     PWM_Output_Set(0, out_ch_1);
     PWM_Output_Set(1, out_ch_2);
@@ -123,13 +117,13 @@ void Control_Update(void)
     const uint8_t in_arr[8]   = {in_ch_1, in_ch_2, in_ch_3, in_ch_4,
                                  in_ch_5, in_ch_6, in_ch_7, in_ch_8};
     const uint8_t out_pct[4]  = {out_ch_1, out_ch_2, out_ch_3, out_ch_4};
-    const uint8_t out_dig[8]  = {out_ch_5, out_ch_6, out_ch_7, out_ch_8,
-                                 out_ch_9, out_ch_10, out_ch_11, out_ch_12};
+    const uint8_t out_dig[8]  = {0, 0, 0, 0,
+                                 out_ch_5, out_ch_6, out_ch_7, out_ch_8};
 
     Display_Update(in_arr, out_pct, out_dig);
 
-    /* ── 读取速度（仅观测，不参与控制）───────────────────── */
-    uint32_t l_period = SpeedSensor_GetPeriod(MOTOR_LEFT);
-    uint32_t r_period = SpeedSensor_GetPeriod(MOTOR_RIGHT);
-    Display_ShowSpeed(l_period, r_period);
+    /* ── 读取编码器位置（仅观测，Cycle 计数）─────────────── */
+    int32_t l_pos = SpeedSensor_GetPosition(MOTOR_LEFT);
+    int32_t r_pos = SpeedSensor_GetPosition(MOTOR_RIGHT);
+    Display_ShowSpeed(l_pos, r_pos);
 }

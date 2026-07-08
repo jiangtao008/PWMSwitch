@@ -1,31 +1,45 @@
 /**
  * @file    speed_sensor.c
- * @brief   2-motor speed measurement — TIM1 input capture on PA8~PA11
+ * @brief   2-motor quadrature decoding — software EXTI on PB12~PB15
  *
- * TIM1 clock: 8 MHz (HSI, APB2 prescaler = 1).
- * Prescaler 71 → 111.1 kHz → 9 µs per tick.
- * Period 0xFFFF → max measurable ~589 ms (~1.7 Hz min).
+ * Pin mapping:
+ *   PB12 → Left motor A phase   (EXTI12)
+ *   PB13 → Left motor B phase   (EXTI13)
+ *   PB14 → Right motor A phase  (EXTI14)
+ *   PB15 → Right motor B phase  (EXTI15)
+ *
+ * Both edges trigger EXTI15_10_IRQHandler; the ISR reads the full
+ * (A,B) pair for the affected motor and walks a 4-state lookup table
+ * to produce +1 (CW) or –1 (CCW) counts at 4× encoder-line resolution.
+ *
+ * Speed_GetRPM() samples position twice with a short delay — caller
+ * should avoid calling it more than ~20 Hz.
  */
 
 #include "speed_sensor.h"
 #include "stm32f1xx_hal.h"
 
-/* ── Timer config ────────────────────────────────────────────────────── */
-#define TIM1_CLOCK      8000000U
-#define TIM1_PRESCALER  71U             /* 8MHz / 72 = 111.1 kHz */
-#define TIM1_PERIOD     0xFFFFU         /* 16-bit max */
-#define TICK_US         9U              /* 1 tick = 9 µs */
+/* ── Pin definitions ────────────────────────────────────────────────── */
+#define LEFT_A_PIN   GPIO_PIN_12
+#define LEFT_B_PIN   GPIO_PIN_13
+#define RIGHT_A_PIN  GPIO_PIN_14
+#define RIGHT_B_PIN  GPIO_PIN_15
+#define ALL_PINS     (LEFT_A_PIN | LEFT_B_PIN | RIGHT_A_PIN | RIGHT_B_PIN)
 
-/* ── Per-channel captured data ───────────────────────────────────────── */
-static volatile uint32_t last_cap[4];   /* previous capture value */
-static volatile uint32_t pulse_ticks[4];/* latest pulse period in ticks */
-static volatile uint8_t  cap_valid[4];  /* 1 = at least one period measured */
+/* ── Per-motor state ────────────────────────────────────────────────── */
+static volatile int32_t encoder_pos[2];      /* signed position counter */
+static volatile uint8_t last_ab[2];          /* bit[0]=A, bit[1]=B */
 
-/* ── Timer handle ────────────────────────────────────────────────────── */
-static TIM_HandleTypeDef htim1;
-
-/* ── Forward ─────────────────────────────────────────────────────────── */
-static void process_channel(uint8_t ch, uint32_t ccr);
+/* ── Quadrature state-transition table ──────────────────────────────── *
+ * Index: (prev_AB ≪ 2) | curr_AB   (AB = (B≪1) | A)
+ *   +1 = CW (forward),  –1 = CCW (reverse),  0 = invalid / glitch
+ * ────────────────────────────────────────────────────────────────────── */
+static const int8_t qtable[16] = {
+     0,  1, -1,  0,   /* 00 → 00,01,10,11 */
+    -1,  0,  0,  1,   /* 01 → 00,01,10,11 */
+     1,  0,  0, -1,   /* 10 → 00,01,10,11 */
+     0, -1,  1,  0,   /* 11 → 00,01,10,11 */
+};
 
 /* ═══════════════════════════════════════════════════════════════════════
  *  Public API
@@ -33,147 +47,107 @@ static void process_channel(uint8_t ch, uint32_t ccr);
 
 void SpeedSensor_Init(void)
 {
-    /* ── GPIO: PA8~PA11 → TIM1_CH1~CH4 ── */
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_TIM1_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
 
+    /* ── GPIO + EXTI: both edges, pull-up ── */
     GPIO_InitTypeDef g = {0};
-    g.Mode  = GPIO_MODE_INPUT;
-    g.Pull  = GPIO_PULLUP;          /* pull high when sensor open-drain */
+    g.Pin   = ALL_PINS;
+    g.Mode  = GPIO_MODE_IT_RISING_FALLING;
+    g.Pull  = GPIO_PULLUP;
     g.Speed = GPIO_SPEED_FREQ_LOW;
-    g.Pin   = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
-    HAL_GPIO_Init(GPIOA, &g);
-
-    /* ── Timer base ── */
-    TIM_Base_InitTypeDef tbase = {0};
-    tbase.Prescaler         = TIM1_PRESCALER;
-    tbase.CounterMode       = TIM_COUNTERMODE_UP;
-    tbase.Period            = TIM1_PERIOD;
-    tbase.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
-    tbase.RepetitionCounter = 0;
-    tbase.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-
-    htim1.Instance = TIM1;
-    htim1.Init     = tbase;
-    HAL_TIM_Base_Init(&htim1);
-
-    /* ── Input capture: rising edge, no prescaler, light filter ── */
-    TIM_IC_InitTypeDef ic = {0};
-    ic.ICPolarity  = TIM_ICPOLARITY_RISING;
-    ic.ICSelection = TIM_ICSELECTION_DIRECTTI;
-    ic.ICPrescaler = TIM_ICPSC_DIV1;
-    ic.ICFilter    = 0x0F;          /* f_DTS/32, N=8 → ~23 µs glitch rejection */
-
-    HAL_TIM_IC_ConfigChannel(&htim1, &ic, TIM_CHANNEL_1);
-    HAL_TIM_IC_ConfigChannel(&htim1, &ic, TIM_CHANNEL_2);
-    HAL_TIM_IC_ConfigChannel(&htim1, &ic, TIM_CHANNEL_3);
-    HAL_TIM_IC_ConfigChannel(&htim1, &ic, TIM_CHANNEL_4);
-
-    HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_IC_Start_IT(&htim1, TIM_CHANNEL_4);
+    HAL_GPIO_Init(GPIOB, &g);
 
     /* ── NVIC ── */
-    HAL_NVIC_SetPriority(TIM1_CC_IRQn, 2, 0);
-    HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
+    HAL_NVIC_SetPriority(EXTI15_10_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
-    /* ── Init state ── */
-    for (uint8_t i = 0; i < 4; i++) {
-        last_cap[i]   = 0;
-        pulse_ticks[i] = 0;
-        cap_valid[i]   = 0;
-    }
+    /* ── Read initial state ── */
+    uint32_t idr = GPIOB->IDR;
+    last_ab[0] = (uint8_t)(((idr & LEFT_B_PIN)  ? 2 : 0) |
+                            ((idr & LEFT_A_PIN)  ? 1 : 0));
+    last_ab[1] = (uint8_t)(((idr & RIGHT_B_PIN) ? 2 : 0) |
+                            ((idr & RIGHT_A_PIN) ? 1 : 0));
+    encoder_pos[0] = 0;
+    encoder_pos[1] = 0;
 }
 
-uint32_t SpeedSensor_GetPeriod(uint8_t motor)
+int32_t SpeedSensor_GetPosition(uint8_t motor)
 {
     if (motor > 1) return 0;
-
-    uint8_t a = motor * 2;       /* CH1 or CH3 */
-    uint8_t b = motor * 2 + 1;   /* CH2 or CH4 */
-
-    uint32_t pa = pulse_ticks[a];
-    uint32_t pb = pulse_ticks[b];
-
-    if (cap_valid[a] && cap_valid[b])
-        return (pa + pb) / 2U;   /* average both lines */
-    else if (cap_valid[a])
-        return pa;
-    else if (cap_valid[b])
-        return pb;
-    else
-        return 0;
+    return encoder_pos[motor];
 }
 
-uint16_t SpeedSensor_GetRPM(uint8_t motor, uint8_t ppr)
+void SpeedSensor_Reset(uint8_t motor)
 {
-    uint32_t ticks = SpeedSensor_GetPeriod(motor);
-    if (ticks == 0 || ppr == 0) return 0;
+    if (motor > 1) return;
 
-    /* RPM = 60,000,000 / (ticks * TICK_US * ppr) */
-    uint32_t period_us = ticks * TICK_US;
-    if (period_us == 0) return 0;
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    encoder_pos[motor] = 0;
+    if (!primask) __enable_irq();
+}
 
-    return (uint16_t)(60000000UL / (period_us * ppr));
+uint16_t SpeedSensor_GetRPM(uint8_t motor, uint16_t ppr)
+{
+    if (motor > 1 || ppr == 0) return 0;
+
+    /* Sample position A */
+    int32_t pos_a = encoder_pos[motor];
+    HAL_Delay(50);                          /* 50 ms sampling window */
+
+    /* Sample position B */
+    int32_t pos_b = encoder_pos[motor];
+    int32_t delta = pos_b - pos_a;
+    if (delta < 0) delta = -delta;          /* absolute speed */
+
+    /* RPM = (delta_counts × 60000) / (50_ms × 4 × ppr) */
+    uint32_t num = (uint32_t)delta * 60000UL;
+    uint32_t den = 50UL * 4UL * (uint32_t)ppr;
+    if (den == 0) return 0;
+
+    uint32_t rpm = num / den;
+    return (uint16_t)(rpm > 65535U ? 65535U : rpm);
 }
 
 uint8_t SpeedSensor_IsValid(uint8_t motor)
 {
     if (motor > 1) return 0;
-    return cap_valid[motor * 2] || cap_valid[motor * 2 + 1];
+    return encoder_pos[motor] != 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- *  ISR
+ *  ISR  —  EXTI15_10  (shared for PB12~PB15)
  * ═══════════════════════════════════════════════════════════════════════ */
 
-void TIM1_CC_IRQHandler(void)
+void EXTI15_10_IRQHandler(void)
 {
-    uint32_t sr = TIM1->SR;
+    uint32_t pr = EXTI->PR;
 
-    if (sr & TIM_SR_CC1IF) {
-        TIM1->SR = ~TIM_SR_CC1IF;
-        process_channel(0, TIM1->CCR1);
-    }
-    if (sr & TIM_SR_CC2IF) {
-        TIM1->SR = ~TIM_SR_CC2IF;
-        process_channel(1, TIM1->CCR2);
-    }
-    if (sr & TIM_SR_CC3IF) {
-        TIM1->SR = ~TIM_SR_CC3IF;
-        process_channel(2, TIM1->CCR3);
-    }
-    if (sr & TIM_SR_CC4IF) {
-        TIM1->SR = ~TIM_SR_CC4IF;
-        process_channel(3, TIM1->CCR4);
-    }
-}
+    /* ── Left motor (PB12, PB13) ── */
+    if (pr & (EXTI_PR_PR12 | EXTI_PR_PR13)) {
+        uint32_t idr = GPIOB->IDR;
+        uint8_t a = (idr & LEFT_A_PIN) ? 1 : 0;
+        uint8_t b = (idr & LEFT_B_PIN) ? 1 : 0;
+        uint8_t curr = (b << 1) | a;
+        uint8_t idx  = ((last_ab[0] & 0x03) << 2) | curr;
 
-/* ── Process one capture ─────────────────────────────────────────────── */
+        encoder_pos[0] += qtable[idx];
+        last_ab[0]      = curr;
 
-static void process_channel(uint8_t ch, uint32_t ccr)
-{
-    uint32_t prev = last_cap[ch];
-
-    if (prev == 0) {
-        /* First edge — store timestamp only */
-        last_cap[ch] = ccr;
-        return;
+        EXTI->PR = EXTI_PR_PR12 | EXTI_PR_PR13;   /* clear flags */
     }
 
-    /* Calculate period, handle counter wrap */
-    uint32_t period;
-    if (ccr >= prev)
-        period = ccr - prev;
-    else
-        period = (TIM1_PERIOD - prev) + ccr + 1U;
+    /* ── Right motor (PB14, PB15) ── */
+    if (pr & (EXTI_PR_PR14 | EXTI_PR_PR15)) {
+        uint32_t idr = GPIOB->IDR;
+        uint8_t a = (idr & RIGHT_A_PIN) ? 1 : 0;
+        uint8_t b = (idr & RIGHT_B_PIN) ? 1 : 0;
+        uint8_t curr = (b << 1) | a;
+        uint8_t idx  = ((last_ab[1] & 0x03) << 2) | curr;
 
-    /* Sanity: reject periods < 10 ticks (90 µs → > 11 kHz, noise) */
-    if (period >= 10U) {
-        pulse_ticks[ch] = period;
-        cap_valid[ch]   = 1;
+        encoder_pos[1] += qtable[idx];
+        last_ab[1]      = curr;
+
+        EXTI->PR = EXTI_PR_PR14 | EXTI_PR_PR15;   /* clear flags */
     }
-
-    last_cap[ch] = ccr;
 }

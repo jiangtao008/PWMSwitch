@@ -1,6 +1,8 @@
 /**
  * @file    digital_output.h
- * @brief   8-channel boolean output — PB12~PB15, PA15, PB3~PB5
+ * @brief   4-channel boolean output — PA15, PB3, PB4, PB5
+ *
+ * PB12~PB15 were freed for quadrature encoder inputs (see speed_sensor.c).
  */
 
 #ifndef DIGITAL_OUTPUT_H
@@ -12,20 +14,21 @@
 extern "C" {
 #endif
 
-#define DIGITAL_OUT_CHANNELS  8
+#define DIGITAL_OUT_CHANNELS  4
 
 /**
  * @brief  Initialise digital output pins, all LOW.
  *
- *          CH1~CH4: PB12~PB15
- *          CH5:     PA15
- *          CH6~CH8: PB3~PB5
+ *          CH1: PA15
+ *          CH2: PB3
+ *          CH3: PB4
+ *          CH4: PB5
  */
 void Digital_Output_Init(void);
 
 /**
  * @brief  Set output level.
- * @param  channel  0~7  (0-3: PB12~PB15, 4: PA15, 5-7: PB3~PB5)
+ * @param  channel  0~3  (0: PA15, 1: PB3, 2: PB4, 3: PB5)
  * @param  value    0 = LOW, non-zero = HIGH
  */
 void Digital_Output_Set(uint8_t channel, uint8_t value);

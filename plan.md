@@ -79,7 +79,7 @@
 | 7 | 输入捕获 | TIM3 | PB0 | CH3 |
 | 8 | 输入捕获 | TIM3 | PB1 | CH4 |
 
-### 输出通道（4 路 PWM + 4 路数字）
+### 输出通道（4 路 PWM + 4 路数字 + 2 路编码器）
 
 ```
 PWM 输出 CH1 ──→ PB6  (TIM4_CH1)
@@ -87,22 +87,31 @@ PWM 输出 CH2 ──→ PB7  (TIM4_CH2)
 PWM 输出 CH3 ──→ PB8  (TIM4_CH3)
 PWM 输出 CH4 ──→ PB9  (TIM4_CH4)
 
-数字输出 CH5 ──→ PB12
-数字输出 CH6 ──→ PB13
-数字输出 CH7 ──→ PB14
-数字输出 CH8 ──→ PB15
+数字输出 CH1 ──→ PA15
+数字输出 CH2 ──→ PB3
+数字输出 CH3 ──→ PB4
+数字输出 CH4 ──→ PB5
+
+编码器 左A ──→ PB12 (EXTI12)
+编码器 左B ──→ PB13 (EXTI13)
+编码器 右A ──→ PB14 (EXTI14)
+编码器 右B ──→ PB15 (EXTI15)
 ```
 
-| 通道 | 功能 | 定时器 | 引脚 | 说明 |
-|------|------|--------|------|------|
+| 通道 | 功能 | 定时器/外设 | 引脚 | 说明 |
+|------|------|------------|------|------|
 | 1 | PWM 输出 | TIM4 | PB6 | PWM 通道 1 |
 | 2 | PWM 输出 | TIM4 | PB7 | PWM 通道 2 |
 | 3 | PWM 输出 | TIM4 | PB8 | PWM 通道 3 |
 | 4 | PWM 输出 | TIM4 | PB9 | PWM 通道 4 |
-| 5 | 数字输出 | — | PB12 | 0/1, 阈值 1500µs |
-| 6 | 数字输出 | — | PB13 | 0/1, 阈值 1500µs |
-| 7 | 数字输出 | — | PB14 | 0/1, 阈值 1500µs |
-| 8 | 数字输出 | — | PB15 | 0/1, 阈值 1500µs |
+| 5 | 数字输出 | GPIO | PA15 | 0/1, 开关量 |
+| 6 | 数字输出 | GPIO | PB3 | 0/1, 开关量 |
+| 7 | 数字输出 | GPIO | PB4 | 0/1, 开关量 |
+| 8 | 数字输出 | GPIO | PB5 | 0/1, 开关量 |
+| — | 编码器 左A | EXTI12 | PB12 | 正交编码 A 相 |
+| — | 编码器 左B | EXTI13 | PB13 | 正交编码 B 相 |
+| — | 编码器 右A | EXTI14 | PB14 | 正交编码 A 相 |
+| — | 编码器 右B | EXTI15 | PB15 | 正交编码 B 相 |
 
 ### OLED 显示屏（I2C）
 
@@ -229,13 +238,29 @@ right = throttle - steering
 | 占空比分辨率 | 800 步（~0.125%） |
 | 频率配置 | 全局变量 `pwm_output_freq_hz`，运行时可变 |
 
-### 输出通道 CH5~CH8：数字输出（GPIO）
+### 输出通道 CH5~CH8：编码器输入（正交解码）
+
+PB12~PB15 已从数字输出改为双电机正交编码器输入。
 
 | 参数 | 值 |
 |------|----|
-| 输出引脚 | PB12, PB13, PB14, PB15 |
+| 解码方式 | 软件 EXTI 状态机 (PB12~PB15) |
+| 左电机 | PB12 (A相), PB13 (B相) |
+| 右电机 | PB14 (A相), PB15 (B相) |
+| 触发方式 | 双边沿 (上升+下降) |
+| 分辨率 | 4× 编码器线数 |
+| 方向检测 | AB 相位差 → 正转/反转 |
+| 测速 API | `SpeedSensor_GetPosition()`, `SpeedSensor_GetRPM(ppr)` |
+| 中断 | EXTI15_10_IRQn, 优先级 2 |
+
+### 数字输出（GPIO）
+
+| 参数 | 值 |
+|------|----|
+| 输出引脚 | PA15, PB3, PB4, PB5 |
 | 输出模式 | 推挽输出 (Push-Pull) |
 | 逻辑阈值 | 输入脉宽 > 1500µs → HIGH，否则 LOW |
+| 注意 | PB12~PB15 已改为正交编码器输入 |
 
 ---
 
@@ -256,7 +281,9 @@ PWMSwitch/
 │   ├── pwm_output.h            # PWM 输出 API（TIM4）
 │   ├── pwm_output.c            # PWM 输出实现
 │   ├── digital_output.h        # 数字输出 API
-│   ├── digital_output.c        # 数字输出实现 (PB12~15)
+│   ├── digital_output.c        # 数字输出实现 (PA15, PB3~PB5)
+│   ├── speed_sensor.h          # 正交编码器 API
+│   ├── speed_sensor.c          # 正交编码器解码 (PB12~PB15 EXTI)
 │   ├── ssd1306.h               # SSD1306 OLED 驱动 API
 │   ├── ssd1306.c               # I2C 驱动 + 帧缓冲 + 8×8 字体
 │   ├── display.h               # 应用 UI 渲染 API
@@ -288,8 +315,18 @@ void PWM_Output_Set(uint8_t channel, uint8_t pct); // 0~100%
 #### digital_output
 
 ```c
-void Digital_Output_Init(void);                  // 初始化 PB12~PB15
+void Digital_Output_Init(void);                  // 初始化 PA15, PB3, PB4, PB5
 void Digital_Output_Set(uint8_t channel, uint8_t val); // 0=LOW, 1=HIGH
+```
+
+#### speed_sensor
+
+```c
+void     SpeedSensor_Init(void);                    // 初始化 EXTI PB12~PB15
+int32_t  SpeedSensor_GetPosition(uint8_t motor);    // 返回编码器计数值 (有符号)
+uint16_t SpeedSensor_GetRPM(uint8_t motor, uint16_t ppr); // 阻塞 50ms 测速
+void     SpeedSensor_Reset(uint8_t motor);          // 复位计数值
+uint8_t  SpeedSensor_IsValid(uint8_t motor);        // 是否有计数
 ```
 
 #### ssd1306
@@ -309,7 +346,8 @@ void SSD1306_DrawNumber(x, y, num);              // 两位数 (00~99)
 
 ```c
 void Display_Init(void);                         // 初始化 SSD1306
-void Display_Update(in_pct[8], out_pct[4], out_dig[4]);  // 渲染一帧
+void Display_Update(in_pct[8], out_pct[4], out_dig[8]);  // 渲染一帧
+void Display_ShowSpeed(int32_t left_pos, int32_t right_pos); // 编码器位置
 ```
 
 ### main.c 行为
@@ -319,10 +357,10 @@ void Display_Update(in_pct[8], out_pct[4], out_dig[4]);  // 渲染一帧
 | CH1 (转向) | PWM CH1~CH4 | 默认映射（steering） |
 | CH2 (油门) | PWM CH1~CH4 | 默认映射（throttle） |
 | CH3~CH4 有效 | — | 读取但暂未使用 |
-| CH5 有效 | DO CH5 | 脉宽 > 1500µs → HIGH |
-| CH6 有效 | DO CH6 | 同上 |
-| CH7 有效 | DO CH7 | 同上 |
-| CH8 有效 | DO CH8 | 同上 |
+| CH5 有效 | DO CH1 (PA15) | 脉宽 > 1500µs → HIGH |
+| CH6 有效 | DO CH2 (PB3) | 同上 |
+| CH7 有效 | DO CH3 (PB4) | 同上 |
+| CH8 有效 | DO CH4 (PB5) | 同上 |
 | 任意输入无效 | 对应输出 | 关断（0% 或 LOW） |
 
 **LED 指示**：
@@ -371,11 +409,12 @@ pio debug
 
 | 资源 | 使用量 | 占比 |
 |------|--------|------|
-| RAM | 1464 字节 | 7.1% |
-| Flash | 7940 字节 | 12.1% |
+| RAM | 1592 字节 | 7.8% |
+| Flash | 10784 字节 | 16.5% |
 | 定时器 | TIM2, TIM3, TIM4 | — |
-| 中断 | TIM2_IRQn, TIM3_IRQn | — |
+| TIM1 (原速度传感器) | 已释放 | 不再使用 |
+| 中断 | TIM2_IRQn, TIM3_IRQn, EXTI15_10_IRQn | — |
 | I2C | I2C2 (PB10/PB11) | SSD1306 OLED |
 | GPIO 输入 | PA0~PA3, PA6~PA7, PB0~PB1 | 8 路 |
-| GPIO 输出 | PB6~PB9, PB12~PB15, PC13 | 9 路 |
+| GPIO 输出 | PB6~PB9, PA15, PB3~PB5, PC13 | 9 路 |
  

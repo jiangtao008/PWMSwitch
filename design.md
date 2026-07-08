@@ -1,6 +1,6 @@
 # PWMSwitch 项目设计文档
 
-> STM32F103C8T6 平台 — 8通道RC接收机PWM输入 → 坦克混控 → 4路PWM输出 + 4路数字输出 + OLED显示
+> STM32F103C8T6 平台 — 8通道RC接收机PWM输入 → 坦克混控 → 4路PWM输出 + 4路数字输出 + OLED显示 + 正交编码器测速
 
 ---
 
@@ -8,7 +8,7 @@
 
 - **MCU**: STM32F103C8T6 (Blue Pill), HSI 8MHz
 - **框架**: STM32Cube HAL (通过 PlatformIO)
-- **功能**: 读取RC接收机8路PWM信号 → 应用坦克混控算法 → 输出4路PWM驱动电机 + 4路数字开关量 → 实时显示在128×64 OLED上
+- **功能**: 读取RC接收机8路PWM信号 → 应用坦克混控算法 → 输出4路PWM驱动电机 + 4路数字开关量 + 正交编码器测速 → 实时显示在128×64 OLED上
 - **编程语言**: C (C99)
 
 ---
@@ -52,6 +52,8 @@
 │  │  │  ③ PWM_Output_Set() × 4        ← 写入PWM输出 (0~100%)       │ │   │
 │  │  │  ④ Digital_Output_Set() × 4    ← 写入数字输出 (0/1)          │ │   │
 │  │  │  ⑤ Display_Update()            ← 刷新OLED显示                │ │   │
+│  │  │  ⑥ SpeedSensor_GetPosition()   ← 读取正交编码器位置          │ │   │
+│  │  │  ⑦ Display_ShowSpeed()         ← 显示左右电机编码值           │ │   │
 │  │  └──────────────────────────────────────────────────────────────┘ │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │              │            │              │              │               │
@@ -63,12 +65,20 @@
 │         │               │               │               │             │
 │         ▼               ▼               ▼               ▼             │
 │  ┌──────────────┐ ┌────────────┐ ┌──────────────┐ ┌──────────────┐    │
-│  │  TIM2 + TIM3 │ │  TIM4     │ │  GPIO PB12~  │ │  ssd1306     │    │
-│  │  输入捕获     │ │  PWM输出  │ │  PB15        │ │  I2C驱动     │    │
+│  │  TIM2 + TIM3 │ │  TIM4     │ │  GPIO PA15,  │ │  ssd1306     │    │
+│  │  输入捕获     │ │  PWM输出  │ │  PB3~PB5     │ │  I2C驱动     │    │
 │  │  PA0~PA3     │ │  PB6~PB9  │ │  推挽输出     │ │  I2C2        │    │
 │  │  PA6,PA7     │ │           │ │              │ │  PB10, PB11  │    │
 │  │  PB0,PB1     │ │           │ │              │ │              │    │
 │  └──────────────┘ └────────────┘ └──────────────┘ └──────────────┘    │
+│         │                                                               │
+│         ▼                                                               │
+│  ┌──────────────┐                                                       │
+│  │  speed_sensor│                                                       │
+│  │  (正交编码)   │                                                       │
+│  │  EXTI 软件    │                                                       │
+│  │  PB12~PB15   │                                                       │
+│  └──────────────┘                                                       │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │                     HAL 层 (stm32f1xx_hal)                       │   │
@@ -103,13 +113,14 @@
 | **默认频率** | 10kHz (可通过 `pwm_output_freq_hz` 动态调整) |
 | **占空比** | 0~100% → 计算 CCR = percent × (ARR+1) / 100 |
 
-### 3.3 `digital_output` — 8路数字输出
+### 3.3 `digital_output` — 4路数字输出
 
 | 项目 | 说明 |
 |------|------|
-| **GPIO** | CH1~CH4: PB12~PB15, CH5: PA15, CH6~CH8: PB3~PB5 |
+| **GPIO** | CH1: PA15, CH2~CH4: PB3~PB5 |
 | **模式** | 推挽输出, 低电平初始 |
 | **值域** | 0 = LOW, 非0 = HIGH |
+| **注意** | PB12~PB15 已释放给 speed_sensor 做正交编码输入 |
 
 ### 3.4 `ssd1306` — OLED驱动
 
@@ -158,12 +169,26 @@
   right ≥ 0 → out_ch_3 = right, out_ch_4 = 0
   right < 0 → out_ch_3 = 0,     out_ch_4 = -right
 
-  数字通道直通:
-  out_ch_5 = (CH5 > 50) ? 1 : 0
-  out_ch_6 = (CH6 > 50) ? 1 : 0
-  out_ch_7 = (CH7 > 50) ? 1 : 0
-  out_ch_8 = (CH8 > 50) ? 1 : 0
+  数字通道直通 (PA15, PB3~PB5):
+  out_ch_9  = (CH5 > 50) ? 1 : 0
+  out_ch_10 = (CH6 > 50) ? 1 : 0
+  out_ch_11 = (CH7 > 50) ? 1 : 0
+  out_ch_12 = (CH8 > 50) ? 1 : 0
 ```
+
+### 3.8 `speed_sensor` — 双电机正交编码测速 (软件 EXTI 解码)
+
+| 项目 | 说明 |
+|------|------|
+| **方案** | 软件正交解码, 使用 EXTI 中断 (PB12~PB15) |
+| **左电机** | PB12 = A相, PB13 = B相 (EXTI12, EXTI13) |
+| **右电机** | PB14 = A相, PB15 = B相 (EXTI14, EXTI15) |
+| **触发方式** | 双边沿 (上升+下降), 内部上拉 |
+| **解码表** | 4状态 (AB=00/01/10/11) 转移表, 每步 +1(CW) 或 -1(CCW) |
+| **分辨率** | 4× 编码器线数 (AB 四倍频) |
+| **测速API** | `SpeedSensor_GetPosition()` 返回累计计数, `SpeedSensor_GetRPM(ppr)` 阻塞50ms采样 |
+| **中断** | EXTI15_10_IRQn, 优先级2 |
+| **原理** | EXTI 中断 → 读 IDR 取 A/B 电平 → 查方向表 → 累加/减计数值 |
 
 ---
 
@@ -181,8 +206,9 @@ flowchart TD
     
     F --> F1[PWM_Input_Init<br/>TIM2+TIM3 输入捕获]
     F1 --> F2[PWM_Output_Init<br/>TIM4 PWM输出]
-    F2 --> F3[Digital_Output_Init<br/>PB12~PB15]
-    F3 --> G[进入主循环]
+    F2 --> F3[Digital_Output_Init<br/>PA15, PB3~PB5]
+    F3 --> F4[SpeedSensor_Init<br/>EXTI 编码器 PB12~PB15]
+    F4 --> G[进入主循环]
     
     G --> H[HAL_GetTick<br/>获取当前时间]
     H --> I{PWM_Input_IsValid(1)<br/>CH2有有效信号?}
@@ -203,8 +229,9 @@ flowchart TD
     P2 --> P3[PWM_Output_Set<br/>写入4路PWM输出]
     P3 --> P4[Digital_Output_Set<br/>写入4路数字输出]
     P4 --> P5[Display_Update<br/>刷新OLED]
-    
-    P5 --> Q[HAL_Delay(10)]
+    P5 --> P6[SpeedSensor_GetPosition<br/>读取编码器计数值]
+    P6 --> P7[Display_ShowSpeed<br/>显示左右电机位置]
+    P7 --> Q[HAL_Delay(10)]
     Q --> H
 ```
 
@@ -250,7 +277,7 @@ flowchart LR
     CTL --> MIX[坦克混控<br/>thr+steer]
     
     MIX --> PWM_OUT[TIM4 PWM<br/>PB6~PB9<br/>out_ch_1~4]
-    MIX --> DIG_OUT[GPIO 数字<br/>PB12~PB15<br/>out_ch_5~8]
+    MIX --> DIG_OUT[GPIO 数字<br/>PA15, PB3~PB5<br/>out_ch_9~12]
     
     PWM_OUT --> M1[左电机前进]
     PWM_OUT --> M2[左电机后退]
@@ -262,6 +289,12 @@ flowchart LR
     DIG_OUT --> D8[数字输出8]
     
     CTL --> DISP[Display_Update<br/>SSD1306 OLED<br/>128×64]
+    
+    MOT_L[左电机编码器<br/>A:PB12 B:PB13] --> EXTI[EXTI15_10_IRQHandler<br/>软件正交解码]
+    MOT_R[右电机编码器<br/>A:PB14 B:PB15] --> EXTI
+    
+    EXTI --> POS[encoder_pos[0..1]<br/>有符号位置计数值]
+    POS --> DISP2[Display_ShowSpeed<br/>L:+1234 / R:-5678]
 ```
 
 ---
@@ -282,14 +315,14 @@ flowchart LR
 | **PWM输出 CH2** | PB7 | TIM4_CH2 | 左电机后退 |
 | **PWM输出 CH3** | PB8 | TIM4_CH3 | 右电机前进 |
 | **PWM输出 CH4** | PB9 | TIM4_CH4 | 右电机后退 |
-| **数字输出 CH1** | PB12 | GPIO | 开关量输出5 |
-| **数字输出 CH2** | PB13 | GPIO | 开关量输出6 |
-| **数字输出 CH3** | PB14 | GPIO | 开关量输出7 |
-| **数字输出 CH4** | PB15 | GPIO | 开关量输出8 |
-| **数字输出 CH5** | PA15 | GPIO | 新增开关量 (原 JTDI) |
-| **数字输出 CH6** | PB3  | GPIO | 新增开关量 (原 JTDO) |
-| **数字输出 CH7** | PB4  | GPIO | 新增开关量 (原 NJTRST) |
-| **数字输出 CH8** | PB5  | GPIO | 新增开关量 |
+| **数字输出 CH1** | PA15 | GPIO | 开关量 (原 JTDI) |
+| **数字输出 CH2** | PB3  | GPIO | 开关量 (原 JTDO) |
+| **数字输出 CH3** | PB4  | GPIO | 开关量 (原 NJTRST) |
+| **数字输出 CH4** | PB5  | GPIO | 开关量 |
+| **编码器 左A相** | PB12 | EXTI12 | 左电机正交编码 A |
+| **编码器 左B相** | PB13 | EXTI13 | 左电机正交编码 B |
+| **编码器 右A相** | PB14 | EXTI14 | 右电机正交编码 A |
+| **编码器 右B相** | PB15 | EXTI15 | 右电机正交编码 B |
 | **OLED SCL** | PB10 | I2C2_SCL | SSD1306时钟 |
 | **OLED SDA** | PB11 | I2C2_SDA | SSD1306数据 |
 | **LED** | PC13 | GPIO | 心跳指示灯 (板载) |
@@ -303,6 +336,7 @@ flowchart LR
 | SysTick_Handler | 默认(0) | HAL 1ms 时基 |
 | TIM2_IRQHandler | 1 | CH1~CH4 PWM输入捕获 |
 | TIM3_IRQHandler | 1 | CH5~CH8 PWM输入捕获 |
+| EXTI15_10_IRQn | 2 | 正交编码器 PB12~PB15 解码 |
 
 ---
 
@@ -324,7 +358,8 @@ control.c
  ├── pwm_input.h
  ├── pwm_output.h
  ├── digital_output.h
- └── display.h
+ ├── display.h
+ └── speed_sensor.h
 
 pwm_input.c
  ├── pwm_input.h
@@ -341,6 +376,10 @@ digital_output.c
 display.c
  ├── display.h
  └── ssd1306.h
+
+speed_sensor.c
+ ├── speed_sensor.h
+ └── stm32f1xx_hal.h
 
 ssd1306.c
  ├── ssd1306.h

@@ -90,30 +90,23 @@ void Display_Update(const uint8_t in_pct[8],
         }                                                           \
     } while (0)
 
-    for (uint8_t i = 0; i < 4; i++) {
-        uint8_t y0 = (i + 4) * ROW_H;
+    /* Digital outputs CH9~CH12  (out_dig[4..7]) on rows 4-5      *
+     * CH5~CH8 (out_dig[0..3]) are unused (freed for encoder).    */
+    for (uint8_t i = 0; i < 2; i++) {
+        uint8_t y0   = (i + 4) * ROW_H;
+        uint8_t off  = i * 2 + 4;         /* index into out_dig[] */
+        uint8_t ch_a = 9  + i * 2;        /* 9, 11 */
+        uint8_t ch_b = 10 + i * 2;        /* 10, 12 */
 
-        /* ── First digital on this row ──────────────────────── */
-        uint8_t ch0 = 5 + i * 2;          /* 5,7,9,11 */
-        if (ch0 >= 10) {
-            SSD1306_DrawChar(RIGHT_X + 0,  y0, '1');
-            SSD1306_DrawChar(RIGHT_X + 8,  y0, '0' + ch0 - 10);
-            DRAW_BOX(RIGHT_X + 17, y0 + 1, out_dig[i * 2]);
-        } else {
-            SSD1306_DrawChar(RIGHT_X + 0,  y0, '0' + ch0);
-            DRAW_BOX(RIGHT_X + 9,  y0 + 1, out_dig[i * 2]);
-        }
+        /* First channel on this row */
+        SSD1306_DrawChar(RIGHT_X + 0,  y0, '0' + ch_a / 10);
+        SSD1306_DrawChar(RIGHT_X + 8,  y0, '0' + ch_a % 10);
+        DRAW_BOX(RIGHT_X + 17, y0 + 1, out_dig[off]);
 
-        /* ── Second digital on this row ─────────────────────── */
-        uint8_t ch1 = 6 + i * 2;          /* 6,8,10,12 */
-        if (ch1 >= 10) {
-            SSD1306_DrawChar(RIGHT_X + 32, y0, '1');
-            SSD1306_DrawChar(RIGHT_X + 40, y0, '0' + ch1 - 10);
-            DRAW_BOX(RIGHT_X + 49, y0 + 1, out_dig[i * 2 + 1]);
-        } else {
-            SSD1306_DrawChar(RIGHT_X + 32, y0, '0' + ch1);
-            DRAW_BOX(RIGHT_X + 41, y0 + 1, out_dig[i * 2 + 1]);
-        }
+        /* Second channel on this row */
+        SSD1306_DrawChar(RIGHT_X + 32, y0, '0' + ch_b / 10);
+        SSD1306_DrawChar(RIGHT_X + 40, y0, '0' + ch_b % 10);
+        DRAW_BOX(RIGHT_X + 49, y0 + 1, out_dig[off + 1]);
     }
 
 #undef DRAW_BOX
@@ -123,16 +116,16 @@ void Display_Update(const uint8_t in_pct[8],
 
 /* ── Speed overlay (bottom-right of right panel) ─────────────────────── */
 
-void Display_ShowSpeed(uint32_t left_period, uint32_t right_period)
+void Display_ShowSpeed(int32_t left_pos, int32_t right_pos)
 {
-    char buf[12];
+    char buf[13];
 
     /* Row 6 (y=48): left motor */
-    snprintf(buf, sizeof(buf), "L:%5lu", left_period);
+    snprintf(buf, sizeof(buf), "L:%+6ld", left_pos);
     SSD1306_DrawString(64, 48, buf);
 
     /* Row 7 (y=56): right motor */
-    snprintf(buf, sizeof(buf), "R:%5lu", right_period);
+    snprintf(buf, sizeof(buf), "R:%+6ld", right_pos);
     SSD1306_DrawString(64, 56, buf);
 
     SSD1306_Flush();

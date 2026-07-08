@@ -1,9 +1,10 @@
 /**
  * @file    speed_sensor.h
- * @brief   2-motor speed measurement via TIM1 input capture (4 channels)
+ * @brief   2-motor quadrature encoder decoding (software EXTI)
  *
- * TIM1 CH1~CH4 on PA8~PA11 capture pulse period from motor Hall/encoder lines.
- * Each motor has 2 sensor lines; the module averages them for one speed value.
+ * PB12/PB13 = left motor A/B phase
+ * PB14/PB15 = right motor A/B phase
+ * Software quadrature state-machine via EXTI10-15 ISR.
  */
 
 #ifndef SPEED_SENSOR_H
@@ -15,38 +16,46 @@
 extern "C" {
 #endif
 
-/** Motor index for API functions. */
+/** Motor index. */
 #define MOTOR_LEFT   0
 #define MOTOR_RIGHT  1
 
 /**
- * @brief  Initialise TIM1 with 4 input-capture channels.
- *         PA8=CH1, PA9=CH2, PA10=CH3, PA11=CH4.
- *         All capture rising edges.
+ * @brief  Initialise EXTI on PB12~PB15 for quadrature reading.
+ *         Both-edge triggers, internal pull-up, priority 2.
  */
 void SpeedSensor_Init(void);
 
 /**
- * @brief  Get latest pulse period for a motor.
- * @param  motor  MOTOR_LEFT (0) or MOTOR_RIGHT (1)
- * @return Pulse period in timer ticks (9 µs/tick @ 8 MHz).
- *         Returns 0 if no valid pulse has been captured.
- *         The value is averaged from the motor's two sensor lines.
+ * @brief  Get accumulated encoder position (signed, 4× counts per line).
+ *         Positive = forward, negative = reverse.
+ * @param  motor  MOTOR_LEFT or MOTOR_RIGHT
+ * @return Encoder position in quadrature counts.
  */
-uint32_t SpeedSensor_GetPeriod(uint8_t motor);
+int32_t SpeedSensor_GetPosition(uint8_t motor);
 
 /**
- * @brief  Get motor speed in RPM.
+ * @brief  Reset encoder position counter to zero.
  * @param  motor  MOTOR_LEFT or MOTOR_RIGHT
- * @param  ppr    Pulses per revolution (total from both sensor lines)
- * @return Speed in RPM, or 0 if no valid measurement.
  */
-uint16_t SpeedSensor_GetRPM(uint8_t motor, uint8_t ppr);
+void SpeedSensor_Reset(uint8_t motor);
 
 /**
- * @brief  Check whether a valid speed measurement is available.
+ * @brief  Calculate motor speed in RPM.
+ *
+ *         Reads position twice with a small delay between samples,
+ *         so this call blocks ~50 ms.
+ *
  * @param  motor  MOTOR_LEFT or MOTOR_RIGHT
- * @return 1 if at least one sensor line has captured a pulse.
+ * @param  ppr    Encoder lines (pulses) per revolution (before 4× quadrature)
+ * @return RPM, or 0 if no movement detected.
+ */
+uint16_t SpeedSensor_GetRPM(uint8_t motor, uint16_t ppr);
+
+/**
+ * @brief  Check whether the encoder has produced any counts.
+ * @param  motor  MOTOR_LEFT or MOTOR_RIGHT
+ * @return 1 if position is non-zero, 0 if still at zero.
  */
 uint8_t SpeedSensor_IsValid(uint8_t motor);
 
