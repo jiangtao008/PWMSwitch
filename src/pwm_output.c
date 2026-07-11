@@ -1,8 +1,8 @@
 /**
  * @file    pwm_output.c
- * @brief   4-ch PWM output — TIM4 CH1~CH4 on PB6~PB9
+ * @brief   4-ch PWM output — TIM1 CH1~CH4 on PA8~PA11
  *
- * Timer clock 8 MHz (HSI).  Default frequency 1.8 kHz → ARR = 4444.
+ * Timer clock 8 MHz (HSI, APB2).  Default frequency 1.8 kHz → ARR = 4444.
  * Duty stored as percentage, recalculated when frequency changes.
  */
 
@@ -10,15 +10,15 @@
 #include "stm32f1xx_hal.h"
 
 /* ── Timer clock ───────────────────────────────────────────────────── */
-#define TIMER_CLOCK  8000000U    /* HSI, APB1 prescaler = 1 */
+#define TIMER_CLOCK  8000000U    /* HSI, APB2 prescaler = 1 */
 
 /* ── Global frequency variable ─────────────────────────────────────── */
-uint32_t pwm_output_freq_hz = 1800;    /* 1.8 kHz — H-bridge 额定 2 kHz 留 10% 余量 */
+uint32_t pwm_output_freq_hz = 1800;    /* 1.8 kHz */
 
 /* ── Internal state ────────────────────────────────────────────────── */
-static TIM_HandleTypeDef htim4;
+static TIM_HandleTypeDef htim1;
 static uint8_t duty_pct[PWM_OUT_CHANNELS];    /* stored 0~100 */
-static uint32_t current_arr;                  /* shadow of TIM4->ARR */
+static uint32_t current_arr;                  /* shadow of TIM1->ARR */
 static uint32_t current_freq;                 /* applied frequency */
 
 /* ── Public API ────────────────────────────────────────────────────── */
@@ -30,17 +30,17 @@ void PWM_Output_Init(void)
     duty_pct[2] = 0;
     duty_pct[3] = 0;
 
-    /* ── GPIO: PB6~PB9 → TIM4_CH1~CH4 ── */
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_TIM4_CLK_ENABLE();
+    /* ── GPIO: PA8~PA11 → TIM1_CH1~CH4 ── */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_TIM1_CLK_ENABLE();
 
     GPIO_InitTypeDef g = {0};
     g.Mode  = GPIO_MODE_AF_PP;
     g.Pull  = GPIO_NOPULL;
     g.Speed = GPIO_SPEED_FREQ_LOW;
 
-    g.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
-    HAL_GPIO_Init(GPIOB, &g);
+    g.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
+    HAL_GPIO_Init(GPIOA, &g);
 
     /* ── Compute ARR ── */
     uint32_t arr = TIMER_CLOCK / pwm_output_freq_hz - 1U;
@@ -58,9 +58,9 @@ void PWM_Output_Init(void)
     tbase.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
     tbase.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
 
-    htim4.Instance = TIM4;
-    htim4.Init     = tbase;
-    HAL_TIM_Base_Init(&htim4);
+    htim1.Instance = TIM1;
+    htim1.Init     = tbase;
+    HAL_TIM_Base_Init(&htim1);
 
     /* ── PWM channel init ── */
     TIM_OC_InitTypeDef oc = {0};
@@ -69,19 +69,19 @@ void PWM_Output_Init(void)
     oc.OCFastMode = TIM_OCFAST_DISABLE;
     oc.Pulse      = 0;  /* 0% duty at startup */
 
-    HAL_TIM_PWM_ConfigChannel(&htim4, &oc, TIM_CHANNEL_1);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &oc, TIM_CHANNEL_2);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &oc, TIM_CHANNEL_3);
-    HAL_TIM_PWM_ConfigChannel(&htim4, &oc, TIM_CHANNEL_4);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &oc, TIM_CHANNEL_1);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &oc, TIM_CHANNEL_2);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &oc, TIM_CHANNEL_3);
+    HAL_TIM_PWM_ConfigChannel(&htim1, &oc, TIM_CHANNEL_4);
 
     /* ── Start all channels ── */
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
 
     /* Generate update event to load ARR/CCR shadow registers immediately */
-    TIM4->EGR = TIM_EGR_UG;
+    TIM1->EGR = TIM_EGR_UG;
 }
 
 void PWM_Output_ApplyFreq(void)
@@ -97,18 +97,18 @@ void PWM_Output_ApplyFreq(void)
     current_freq = pwm_output_freq_hz;
 
     /* Update ARR */
-    __HAL_TIM_SET_AUTORELOAD(&htim4, arr);
+    __HAL_TIM_SET_AUTORELOAD(&htim1, arr);
     /* Generate update event to latch the new ARR immediately */
-    TIM4->EGR = TIM_EGR_UG;
+    TIM1->EGR = TIM_EGR_UG;
 
     /* Recalculate CCR for all 4 channels */
     for (uint8_t i = 0; i < PWM_OUT_CHANNELS; i++) {
         uint32_t ccr = (uint32_t)duty_pct[i] * (arr + 1U) / 100U;
         switch (i) {
-            case 0: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, ccr); break;
-            case 1: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, ccr); break;
-            case 2: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, ccr); break;
-            case 3: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, ccr); break;
+            case 0: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, ccr); break;
+            case 1: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, ccr); break;
+            case 2: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, ccr); break;
+            case 3: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, ccr); break;
         }
     }
 }
@@ -123,9 +123,9 @@ void PWM_Output_Set(uint8_t channel, uint8_t percent)
     uint32_t ccr = (uint32_t)percent * (current_arr + 1U) / 100U;
 
     switch (channel) {
-        case 0: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, ccr); break;
-        case 1: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, ccr); break;
-        case 2: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, ccr); break;
-        case 3: __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, ccr); break;
+        case 0: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, ccr); break;
+        case 1: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, ccr); break;
+        case 2: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, ccr); break;
+        case 3: __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, ccr); break;
     }
 }

@@ -2,7 +2,7 @@
  * @file    ssd1306.c
  * @brief   SSD1306 128×64 I2C OLED driver with framebuffer.
  *
- * I2C2: PB10=SCL, PB11=SDA, 400 kHz, 7-bit addr 0x3C.
+ * I2C1: PB6=SCL, PB7=SDA, 400 kHz, 7-bit addr 0x3C.
  */
 
 #include "ssd1306.h"
@@ -13,7 +13,7 @@
 
 /* ── Framebuffer ──────────────────────────────────────────────────── */
 static uint8_t fb[SSD1306_WIDTH * SSD1306_HEIGHT / 8];  /* 1024 bytes */
-static I2C_HandleTypeDef hi2c2;
+static I2C_HandleTypeDef hi2c1;
 
 /* ── 8×8 font: ASCII 32~127 ──────────────────────────────────────── */
 static const uint8_t font8x8[96][8] = {
@@ -118,7 +118,7 @@ static const uint8_t font8x8[96][8] = {
 static void i2c_write_cmd(uint8_t byte)
 {
     uint8_t buf[2] = {0x00, byte};   /* Co=0, D/C#=0 → command */
-    HAL_I2C_Master_Transmit(&hi2c2, I2C_ADDR, buf, 2, 10);
+    HAL_I2C_Master_Transmit(&hi2c1, I2C_ADDR, buf, 2, 10);
 }
 
 static void i2c_write_data_buf(const uint8_t *data, uint16_t len)
@@ -129,7 +129,7 @@ static void i2c_write_data_buf(const uint8_t *data, uint16_t len)
         uint16_t chunk = (len > 128) ? 128 : len;
         tmp[0] = 0x40;   /* Co=0, D/C#=1 → data */
         for (uint16_t i = 0; i < chunk; i++) tmp[i + 1] = data[i];
-        HAL_I2C_Master_Transmit(&hi2c2, I2C_ADDR, tmp, chunk + 1, 100);
+        HAL_I2C_Master_Transmit(&hi2c1, I2C_ADDR, tmp, chunk + 1, 100);
         data += chunk;
         len  -= chunk;
     }
@@ -139,26 +139,26 @@ static void i2c_write_data_buf(const uint8_t *data, uint16_t len)
 
 void SSD1306_Init(void)
 {
-    /* ── GPIO: PB10=SCL, PB11=SDA ── */
+    /* ── GPIO: PB6=SCL, PB7=SDA ── */
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_I2C2_CLK_ENABLE();
+    __HAL_RCC_I2C1_CLK_ENABLE();
 
     GPIO_InitTypeDef g = {0};
     g.Mode  = GPIO_MODE_AF_OD;
     g.Pull  = GPIO_PULLUP;
     g.Speed = GPIO_SPEED_FREQ_HIGH;
-    g.Pin   = GPIO_PIN_10 | GPIO_PIN_11;
+    g.Pin   = GPIO_PIN_6 | GPIO_PIN_7;
     HAL_GPIO_Init(GPIOB, &g);
 
-    hi2c2.Instance             = I2C2;
-    hi2c2.Init.ClockSpeed      = 400000;
-    hi2c2.Init.DutyCycle       = I2C_DUTYCYCLE_2;
-    hi2c2.Init.OwnAddress1     = 0;
-    hi2c2.Init.AddressingMode  = I2C_ADDRESSINGMODE_7BIT;
-    hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-    hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-    hi2c2.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;
-    HAL_I2C_Init(&hi2c2);
+    hi2c1.Instance             = I2C1;
+    hi2c1.Init.ClockSpeed      = 400000;
+    hi2c1.Init.DutyCycle       = I2C_DUTYCYCLE_2;
+    hi2c1.Init.OwnAddress1     = 0;
+    hi2c1.Init.AddressingMode  = I2C_ADDRESSINGMODE_7BIT;
+    hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    hi2c1.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;
+    HAL_I2C_Init(&hi2c1);
 
     /* ── SSD1306 init sequence ─────────────────────────────── */
     HAL_Delay(200);       /* wait for OLED module power-up */
