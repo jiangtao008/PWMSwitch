@@ -6,9 +6,7 @@
  *  out_ch_1~4 PWM 输出，值 0~100（占空比）
  *  out_ch_9~12 数字输出，值 0 或 1  (PA15/PB3~PB5)
  *
- *  PA8/PA9  → 左电机编码器 (TIM1 硬件)
- *  PB14/PB15 → 右电机编码器 (EXTI 软件)
- *  PB12/PB13 → 数字输出 (原左编码器脚，已释放)
+ *  PB12~PB15 给 speed_sensor 做正交编码测速。
  */
 
 #include "control.h"

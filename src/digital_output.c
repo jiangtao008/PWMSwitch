@@ -1,9 +1,8 @@
 /**
  * @file    digital_output.c
- * @brief   4-ch boolean output — PA15, PB3, PB12, PB13
+ * @brief   4-ch boolean output — PA15, PB3, PB4, PB5
  *
- * PB12/PB13 原为左电机编码器输入，左电机已迁移到
- * TIM1 硬件编码器 (PA8/PA9)，释放给数字输出使用。
+ * PB12~PB15 给 speed_sensor 做正交编码测速。
  */
 
 #include "digital_output.h"
@@ -13,15 +12,15 @@
 static GPIO_TypeDef *const port_map[DIGITAL_OUT_CHANNELS] = {
     GPIOA,   /* CH1 → PA15 */
     GPIOB,   /* CH2 → PB3  */
-    GPIOB,   /* CH3 → PB12 */
-    GPIOB,   /* CH4 → PB13 */
+    GPIOB,   /* CH3 → PB4  */
+    GPIOB,   /* CH4 → PB5  */
 };
 
 static const uint16_t pin_map[DIGITAL_OUT_CHANNELS] = {
     GPIO_PIN_15,   /* CH1 → PA15 */
     GPIO_PIN_3,    /* CH2 → PB3  */
-    GPIO_PIN_12,   /* CH3 → PB12 */
-    GPIO_PIN_13,   /* CH4 → PB13 */
+    GPIO_PIN_4,    /* CH3 → PB4  */
+    GPIO_PIN_5,    /* CH4 → PB5  */
 };
 
 void Digital_Output_Init(void)
@@ -34,15 +33,15 @@ void Digital_Output_Init(void)
     g.Pull  = GPIO_NOPULL;
     g.Speed = GPIO_SPEED_FREQ_LOW;
 
-    /* Init PA15, PB3, PB12, PB13 */
-    g.Pin = GPIO_PIN_3 | GPIO_PIN_12 | GPIO_PIN_13;
+    /* Init PA15, PB3, PB4, PB5 */
+    g.Pin = GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
     HAL_GPIO_Init(GPIOB, &g);
 
     g.Pin = GPIO_PIN_15;
     HAL_GPIO_Init(GPIOA, &g);
 
     /* All LOW initially */
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3 | GPIO_PIN_12 | GPIO_PIN_13,
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5,
                       GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
 }
