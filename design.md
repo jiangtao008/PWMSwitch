@@ -134,10 +134,10 @@
 
 ### 3.5 `display` — 应用层界面
 
-- **左半屏** (x=0~63): 8路输入通道, 编号1~8, 条形图显示0~100%
-- **右半屏** (x=64~127): 
-  - 上方4行: PWM输出通道1~4, 条形图
-  - 下方4行: 数字输出通道5~8, 显示 `ON`/`--`
+- **左半屏** (x=0~63): 4路输入通道, 编号1~4, 条形图显示0~100%
+- **右半屏** (x=64~127):
+  - 上方4行: PWM输出通道1~4, 编号1~4, 条形图
+  - 下方2行: 左/右编码器速度计数 (L:+1234 / R:-5678)
 - **中分线**: x=63 处垂直竖线
 
 ### 3.6 `main` — 入口与心跳
@@ -227,7 +227,7 @@ flowchart TD
     O --> P1[PWM_Input_GetPercent<br/>读取8路输入 0~100%]
     P1 --> P2[坦克混控算法<br/>thr+steer → left+right]
     P2 --> P3[PWM_Output_Set<br/>写入4路PWM输出]
-    P3 --> P4[Digital_Output_Set<br/>写入4路数字输出]
+    P3 --> P4[Digital_Output_Set<br/>写入4路数字输出<br/><small>(OLED 已不显示)</small>]
     P4 --> P5[Display_Update<br/>刷新OLED]
     P5 --> P6[SpeedSensor_GetPosition<br/>读取编码器计数值]
     P6 --> P7[Display_ShowSpeed<br/>显示左右电机位置]
