@@ -317,12 +317,12 @@ flowchart LR
 | **PWM输出 CH4** | PB9 | TIM4_CH4 | 右电机后退 |
 | **数字输出 CH1** | PA15 | GPIO | 开关量 (原 JTDI) |
 | **数字输出 CH2** | PB3  | GPIO | 开关量 (原 JTDO) |
-| **数字输出 CH3** | PB4  | GPIO | 开关量 (原 NJTRST) |
-| **数字输出 CH4** | PB5  | GPIO | 开关量 |
-| **编码器 左A相** | PB12 | EXTI12 | 左电机正交编码 A |
-| **编码器 左B相** | PB13 | EXTI13 | 左电机正交编码 B |
-| **编码器 右A相** | PB14 | EXTI14 | 右电机正交编码 A |
-| **编码器 右B相** | PB15 | EXTI15 | 右电机正交编码 B |
+| **数字输出 CH3** | PB12 | GPIO | 开关量 |
+| **数字输出 CH4** | PB13 | GPIO | 开关量 |
+| **编码器 左A相** | PA8  | TIM1_CH1 | 左电机正交编码 A (硬件) |
+| **编码器 左B相** | PA9  | TIM1_CH2 | 左电机正交编码 B (硬件) |
+| **编码器 右A相** | PB14 | EXTI14 | 右电机正交编码 A (软件 EXTI) |
+| **编码器 右B相** | PB15 | EXTI15 | 右电机正交编码 B (软件 EXTI) |
 | **OLED SCL** | PB10 | I2C2_SCL | SSD1306时钟 |
 | **OLED SDA** | PB11 | I2C2_SDA | SSD1306数据 |
 | **LED** | PC13 | GPIO | 心跳指示灯 (板载) |

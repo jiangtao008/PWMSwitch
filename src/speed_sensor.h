@@ -1,10 +1,9 @@
 /**
  * @file    speed_sensor.h
- * @brief   2-motor quadrature encoder decoding (software EXTI)
+ * @brief   双电机正交编码器解码 — 左硬件 + 右软件
  *
- * PB12/PB13 = left motor A/B phase
- * PB14/PB15 = right motor A/B phase
- * Software quadrature state-machine via EXTI10-15 ISR.
+ * 左电机: PA8/PA9 → TIM1 编码器模式 (硬件计数，无中断)
+ * 右电机: PB14/PB15 → EXTI 软件解码
  */
 
 #ifndef SPEED_SENSOR_H

@@ -1,34 +1,38 @@
 /**
  * @file    speed_sensor.c
- * @brief   2-motor quadrature decoding — software EXTI on PB12~PB15
+ * @brief   双电机正交解码 — 左硬件(TIM1) + 右软件(EXTI)
  *
  * Pin mapping:
- *   PB12 → Left motor A phase   (EXTI12)
- *   PB13 → Left motor B phase   (EXTI13)
+ *   PA8  → Left motor A phase   (TIM1_CH1)
+ *   PA9  → Left motor B phase   (TIM1_CH2)
  *   PB14 → Right motor A phase  (EXTI14)
  *   PB15 → Right motor B phase  (EXTI15)
  *
- * Both edges trigger EXTI15_10_IRQHandler; the ISR reads the full
- * (A,B) pair for the affected motor and walks a 4-state lookup table
- * to produce +1 (CW) or –1 (CCW) counts at 4× encoder-line resolution.
+ * 左电机使用 TIM1 编码器模式硬件计数（无中断开销）。
+ * 右电机使用 EXTI15_10 中断 + 软件状态机解码。
  *
- * Speed_GetRPM() samples position twice with a short delay — caller
- * should avoid calling it more than ~20 Hz.
+ * Speed_GetRPM() 阻塞 50ms 采样测速，调用频率不要超过 ~20 Hz。
  */
 
 #include "speed_sensor.h"
 #include "stm32f1xx_hal.h"
 
-/* ── Pin definitions ────────────────────────────────────────────────── */
-#define LEFT_A_PIN   GPIO_PIN_12
-#define LEFT_B_PIN   GPIO_PIN_13
+/* ── Pin definitions ────────────────────────────────────────────────── *
+ * Left  motor — TIM1 encoder mode on PA8/PA9  (hardware, no ISR)
+ * Right motor — EXTI software decoding on PB14/PB15
+ * ────────────────────────────────────────────────────────────────────── */
 #define RIGHT_A_PIN  GPIO_PIN_14
 #define RIGHT_B_PIN  GPIO_PIN_15
-#define ALL_PINS     (LEFT_A_PIN | LEFT_B_PIN | RIGHT_A_PIN | RIGHT_B_PIN)
+#define RIGHT_PINS   (RIGHT_A_PIN | RIGHT_B_PIN)
 
-/* ── Per-motor state ────────────────────────────────────────────────── */
-static volatile int32_t encoder_pos[2];      /* signed position counter */
-static volatile uint8_t last_ab[2];          /* bit[0]=A, bit[1]=B */
+/* ── EXTI decoder state (right motor only) ──────────────────────────── */
+static volatile int32_t  right_pos;       /* signed position counter */
+static volatile uint8_t  right_last_ab;   /* bit[0]=A, bit[1]=B */
+
+/* ── TIM1 16-bit encoder → 32-bit extension (left motor) ────────────── */
+static TIM_HandleTypeDef htim1_enc;
+static int32_t  tim1_accum;
+static uint16_t tim1_last_cnt;
 
 /* ── Quadrature state-transition table ──────────────────────────────── *
  * Index: (prev_AB ≪ 2) | curr_AB   (AB = (B≪1) | A)
@@ -47,43 +51,91 @@ static const int8_t qtable[16] = {
 
 void SpeedSensor_Init(void)
 {
+    /* ── TIM1 encoder mode — left motor (PA8/PA9) ──────────────────── */
+    __HAL_RCC_TIM1_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    GPIO_InitTypeDef g = {0};
+    g.Pin   = GPIO_PIN_8 | GPIO_PIN_9;
+    g.Mode  = GPIO_MODE_AF_PP;
+    g.Pull  = GPIO_PULLUP;
+    g.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &g);
+
+    TIM_Encoder_InitTypeDef enc = {0};
+    enc.EncoderMode        = TIM_ENCODERMODE_TI12;
+    enc.IC1Polarity        = TIM_ICPOLARITY_RISING;
+    enc.IC1Selection       = TIM_ICSELECTION_DIRECTTI;
+    enc.IC1Prescaler       = TIM_ICPSC_DIV1;
+    enc.IC1Filter          = 0;
+    enc.IC2Polarity        = TIM_ICPOLARITY_RISING;
+    enc.IC2Selection       = TIM_ICSELECTION_DIRECTTI;
+    enc.IC2Prescaler       = TIM_ICPSC_DIV1;
+    enc.IC2Filter          = 0;
+
+    htim1_enc.Instance               = TIM1;
+    htim1_enc.Init.Prescaler         = 0;
+    htim1_enc.Init.CounterMode       = TIM_COUNTERMODE_UP;
+    htim1_enc.Init.Period            = 0xFFFF;
+    htim1_enc.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+    htim1_enc.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_Encoder_Init(&htim1_enc, &enc);
+
+    HAL_TIM_Encoder_Start(&htim1_enc, TIM_CHANNEL_1);
+    HAL_TIM_Encoder_Start(&htim1_enc, TIM_CHANNEL_2);
+
+    tim1_last_cnt = 0;
+    tim1_accum    = 0;
+
+    /* ── EXTI software decoder — right motor (PB14/PB15) ──────────── */
     __HAL_RCC_GPIOB_CLK_ENABLE();
 
-    /* ── GPIO + EXTI: both edges, pull-up ── */
-    GPIO_InitTypeDef g = {0};
-    g.Pin   = ALL_PINS;
+    g.Pin   = RIGHT_PINS;
     g.Mode  = GPIO_MODE_IT_RISING_FALLING;
     g.Pull  = GPIO_PULLUP;
     g.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &g);
 
-    /* ── NVIC ── */
     HAL_NVIC_SetPriority(EXTI15_10_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
-    /* ── Read initial state ── */
     uint32_t idr = GPIOB->IDR;
-    last_ab[0] = (uint8_t)(((idr & LEFT_B_PIN)  ? 2 : 0) |
-                            ((idr & LEFT_A_PIN)  ? 1 : 0));
-    last_ab[1] = (uint8_t)(((idr & RIGHT_B_PIN) ? 2 : 0) |
-                            ((idr & RIGHT_A_PIN) ? 1 : 0));
-    encoder_pos[0] = 0;
-    encoder_pos[1] = 0;
+    right_last_ab = (uint8_t)(((idr & RIGHT_B_PIN) ? 2 : 0) |
+                               ((idr & RIGHT_A_PIN) ? 1 : 0));
+    right_pos = 0;
 }
 
 int32_t SpeedSensor_GetPosition(uint8_t motor)
 {
     if (motor > 1) return 0;
-    return encoder_pos[motor];
+
+    if (motor == MOTOR_LEFT) {
+        /* 16-bit TIM1 counter → 32-bit accumulation */
+        uint16_t cnt  = TIM1->CNT;
+        int16_t  diff = (int16_t)(cnt - tim1_last_cnt);
+        tim1_accum   += diff;
+        tim1_last_cnt = cnt;
+        return tim1_accum;
+    }
+
+    return right_pos;
 }
 
 void SpeedSensor_Reset(uint8_t motor)
 {
     if (motor > 1) return;
 
+    if (motor == MOTOR_LEFT) {
+        /* 直接在 TIM1->CNT 写 0 复位硬件计数器 */
+        TIM1->CNT = 0;
+        tim1_last_cnt = 0;
+        tim1_accum    = 0;
+        return;
+    }
+
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
-    encoder_pos[motor] = 0;
+    right_pos = 0;
     if (!primask) __enable_irq();
 }
 
@@ -91,12 +143,11 @@ uint16_t SpeedSensor_GetRPM(uint8_t motor, uint16_t ppr)
 {
     if (motor > 1 || ppr == 0) return 0;
 
-    /* Sample position A */
-    int32_t pos_a = encoder_pos[motor];
+    /* 使用 GetPosition 统一读取（兼容 TIM1 与 EXTI） */
+    int32_t pos_a = SpeedSensor_GetPosition(motor);
     HAL_Delay(50);                          /* 50 ms sampling window */
 
-    /* Sample position B */
-    int32_t pos_b = encoder_pos[motor];
+    int32_t pos_b = SpeedSensor_GetPosition(motor);
     int32_t delta = pos_b - pos_a;
     if (delta < 0) delta = -delta;          /* absolute speed */
 
@@ -112,41 +163,26 @@ uint16_t SpeedSensor_GetRPM(uint8_t motor, uint16_t ppr)
 uint8_t SpeedSensor_IsValid(uint8_t motor)
 {
     if (motor > 1) return 0;
-    return encoder_pos[motor] != 0;
+    return SpeedSensor_GetPosition(motor) != 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- *  ISR  —  EXTI15_10  (shared for PB12~PB15)
+ *  ISR  —  EXTI15_10  (右电机 PB14/PB15 软件解码)
+ *  左电机已用 TIM1 硬件编码器，无需中断
  * ═══════════════════════════════════════════════════════════════════════ */
 
 void EXTI15_10_IRQHandler(void)
 {
-    uint32_t pr = EXTI->PR;
-
-    /* ── Left motor (PB12, PB13) ── */
-    if (pr & (EXTI_PR_PR12 | EXTI_PR_PR13)) {
-        uint32_t idr = GPIOB->IDR;
-        uint8_t a = (idr & LEFT_A_PIN) ? 1 : 0;
-        uint8_t b = (idr & LEFT_B_PIN) ? 1 : 0;
-        uint8_t curr = (b << 1) | a;
-        uint8_t idx  = ((last_ab[0] & 0x03) << 2) | curr;
-
-        encoder_pos[0] += qtable[idx];
-        last_ab[0]      = curr;
-
-        EXTI->PR = EXTI_PR_PR12 | EXTI_PR_PR13;   /* clear flags */
-    }
-
     /* ── Right motor (PB14, PB15) ── */
-    if (pr & (EXTI_PR_PR14 | EXTI_PR_PR15)) {
+    if (EXTI->PR & (EXTI_PR_PR14 | EXTI_PR_PR15)) {
         uint32_t idr = GPIOB->IDR;
         uint8_t a = (idr & RIGHT_A_PIN) ? 1 : 0;
         uint8_t b = (idr & RIGHT_B_PIN) ? 1 : 0;
         uint8_t curr = (b << 1) | a;
-        uint8_t idx  = ((last_ab[1] & 0x03) << 2) | curr;
+        uint8_t idx  = ((right_last_ab & 0x03) << 2) | curr;
 
-        encoder_pos[1] += qtable[idx];
-        last_ab[1]      = curr;
+        right_pos     += qtable[idx];
+        right_last_ab  = curr;
 
         EXTI->PR = EXTI_PR_PR14 | EXTI_PR_PR15;   /* clear flags */
     }
