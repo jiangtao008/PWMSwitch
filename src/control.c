@@ -155,6 +155,9 @@ void Control_Update(void)
     float speed_left  = (float)(l_pos - prev_enc_pos[MOTOR_LEFT])  / dt;
     float speed_right = (float)(r_pos - prev_enc_pos[MOTOR_RIGHT]) / dt;
 
+    /* 左编码器物理方向与电机正转方向相反，取反后 PID 才能正确闭环 */
+    speed_left = -speed_left;
+
     prev_enc_pos[MOTOR_LEFT]  = l_pos;
     prev_enc_pos[MOTOR_RIGHT] = r_pos;
     prev_tick = now;
@@ -216,8 +219,5 @@ void Control_Update(void)
     const uint8_t out_dig[8]  = {0, 0, 0, 0,
                                  out_ch_5, out_ch_6, out_ch_7, out_ch_8};
 
-    Display_Update(in_arr, out_pct, out_dig);
-
-    /* ── 显示编码器位置 ──────────────────────────────────── */
-    Display_ShowSpeed(l_pos, r_pos);
+    Display_Update(in_arr, out_pct, out_dig, l_pos, r_pos);
 }

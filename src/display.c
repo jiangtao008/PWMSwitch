@@ -45,7 +45,8 @@ void Display_Init(void)
 
 void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_pct[4],
-                    const uint8_t out_dig[8])
+                    const uint8_t out_dig[8],
+                    int32_t left_pos, int32_t right_pos)
 {
     (void)out_dig;      /* 不用数字输出显示 */
 
@@ -68,13 +69,7 @@ void Display_Update(const uint8_t in_pct[8],
         draw_bar(RIGHT_X + BAR_X_L, y0, out_pct[i]);
     }
 
-    SSD1306_Flush();
-}
-
-/* ── Speed overlay (rows 6~7 of right panel) ───────────────────────── */
-
-void Display_ShowSpeed(int32_t left_pos, int32_t right_pos)
-{
+    /* ── Speed overlay (rows 6~7 of right panel) ───────────── */
     char buf[13];
 
     snprintf(buf, sizeof(buf), "L:%+6ld", left_pos);
@@ -83,5 +78,6 @@ void Display_ShowSpeed(int32_t left_pos, int32_t right_pos)
     snprintf(buf, sizeof(buf), "R:%+6ld", right_pos);
     SSD1306_DrawString(64, 56, buf);
 
+    /* ── Single flush — no flicker ──────────────────────────── */
     SSD1306_Flush();
 }
