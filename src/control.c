@@ -29,10 +29,11 @@
 #define PID_MAX_SPEED_CPS   9500.0f
 
 /* 归一化 PID 参数（误差 ±1.0 = ±100% 速度） */
-#define PID_KP              80.0f   /* 比例: 100% 误差 → 80% PWM */
-#define PID_KI              30.0f   /* 积分: 1 秒全误差累积 → 30% PWM */
+#define PID_KP              60.0f   /* 比例: 100% 误差 → 60% PWM 修正 */
+#define PID_KI              3.0f    /* 积分: 1 秒全误差累积 → 3% PWM */
 #define PID_KD              0.0f    /* 微分暂不启用 */
-#define PID_INTEGRAL_LIMIT  2.0f    /* 积分上限 ±2.0（≈ ±60% PWM 稳态输出） */
+#define PID_OUTPUT_LIMIT    30.0f   /* PID 修正限幅 ±30%，前馈提供主力度 */
+#define PID_INTEGRAL_LIMIT  1.0f    /* 积分上限 ±1.0（I max = 3%） */
 
 /* ── PID 控制器结构 ──────────────────────────────────────────────── */
 typedef struct {
@@ -74,9 +75,11 @@ static float PID_Compute(PID_t *pid, float setpoint, float measurement, float dt
     return out;
 }
 
-/* PID 实例（左右电机各一个） */
-static PID_t pid_left  = {PID_KP, PID_KI, PID_KD, 0, 0, -100, 100, PID_INTEGRAL_LIMIT};
-static PID_t pid_right = {PID_KP, PID_KI, PID_KD, 0, 0, -100, 100, PID_INTEGRAL_LIMIT};
+/* PID 实例（左右电机各一个，输出范围 = PID 修正限幅） */
+static PID_t pid_left  = {PID_KP, PID_KI, PID_KD, 0, 0,
+                          -PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT, PID_INTEGRAL_LIMIT};
+static PID_t pid_right = {PID_KP, PID_KI, PID_KD, 0, 0,
+                          -PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT, PID_INTEGRAL_LIMIT};
 
 /* 速度测量状态 */
 static int32_t  prev_enc_pos[2] = {0, 0};
@@ -162,21 +165,32 @@ void Control_Update(void)
     prev_enc_pos[MOTOR_RIGHT] = r_pos;
     prev_tick = now;
 
-    /* ── 混控输出 → 目标速度 ────────────────────────────────── */
-    float target_left  = (float)left  * PID_MAX_SPEED_CPS / 100.0f;
-    float target_right = (float)right * PID_MAX_SPEED_CPS / 100.0f;
+    /* ── 前馈 + PID 微调 ─────────────────────────────────────── *
+     *  混控值直接作为开环前馈（即时响应），PID 只修正误差部分。     *
+     *  加减速反应与开环一致，PID 消除静摩擦和负载扰动。            */
+    float ff_left  = (float)left;               /* -100..+100 开环基值 */
+    float ff_right = (float)right;
 
-    /* ── PID 计算（输出 -100..+100） ─────────────────────────── */
-    float pid_out_left  = PID_Compute(&pid_left,  target_left,  speed_left,  dt);
-    float pid_out_right = PID_Compute(&pid_right, target_right, speed_right, dt);
+    float target_left  = ff_left  * PID_MAX_SPEED_CPS / 100.0f;
+    float target_right = ff_right * PID_MAX_SPEED_CPS / 100.0f;
 
-    /* ── PID 输出 → PWM 通道 ─────────────────────────────────── */
+    float pid_corr_left  = PID_Compute(&pid_left,  target_left,  speed_left,  dt);
+    float pid_corr_right = PID_Compute(&pid_right, target_right, speed_right, dt);
+
+    /* 合成输出 + 限幅 */
+    float total_left  = ff_left  + pid_corr_left;
+    float total_right = ff_right + pid_corr_right;
+    if (total_left  > 100.0f) total_left  = 100.0f;
+    if (total_left  < -100.0f) total_left  = -100.0f;
+    if (total_right > 100.0f) total_right = 100.0f;
+    if (total_right < -100.0f) total_right = -100.0f;
+
     /* 左电机 (CH1=反转, CH2=正转) */
-    if (pid_out_left > 3) {
+    if (total_left > 3) {
         out_ch_1 = 0;
-        out_ch_2 = (uint8_t)(pid_out_left + 0.5f);          /* 正转 */
-    } else if (pid_out_left < -3) {
-        out_ch_1 = (uint8_t)(-pid_out_left + 0.5f);         /* 反转 */
+        out_ch_2 = (uint8_t)(total_left + 0.5f);
+    } else if (total_left < -3) {
+        out_ch_1 = (uint8_t)(-total_left + 0.5f);
         out_ch_2 = 0;
     } else {
         out_ch_1 = 0;
@@ -184,11 +198,11 @@ void Control_Update(void)
     }
 
     /* 右电机 (CH3=反转, CH4=正转) */
-    if (pid_out_right > 3) {
+    if (total_right > 3) {
         out_ch_3 = 0;
-        out_ch_4 = (uint8_t)(pid_out_right + 0.5f);         /* 正转 */
-    } else if (pid_out_right < -3) {
-        out_ch_3 = (uint8_t)(-pid_out_right + 0.5f);        /* 反转 */
+        out_ch_4 = (uint8_t)(total_right + 0.5f);
+    } else if (total_right < -3) {
+        out_ch_3 = (uint8_t)(-total_right + 0.5f);
         out_ch_4 = 0;
     } else {
         out_ch_3 = 0;
