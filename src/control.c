@@ -58,16 +58,26 @@ void Control_Update(void)
         int16_t s_abs  = (steer > 0) ? steer : -steer;
         steer = s_sign * (s_abs * s_abs / 50);
     }
+    steer *= 2;   /* 与油门统一量程：±100 */
+    /* 油门联动转向力度：低速减敏防抖，高速增强响应 */
+    {
+        int16_t thrAbs = (thr > 0) ? thr : -thr;
+        int16_t mult   = 50 + (thrAbs * 45) / 100;  /* 50%(静止) ~ 90%(满油) */
+        steer = (steer * mult) / 100;
+    }
+
 
     int16_t left  = thr + steer;
     int16_t right = thr - steer;
 
-    /* 限幅 */
-    if (left  >  100) left  =  100;
-    if (left  < -100) left  = -100;
-    if (right >  100) right =  100;
-    if (right < -100) right = -100;
-
+    /* 等比缩放：任一侧超限时等比例压缩，保持差速比例 */
+    int16_t maxVal = (left > right) ? left : right;
+    int16_t minVal = (left < right) ? left : right;
+    if (-minVal > maxVal) maxVal = -minVal;
+    if (maxVal > 100) {
+        left  = (left  * 100) / maxVal;
+        right = (right * 100) / maxVal;
+    }
     /* 左电机 (CH1/CH2) */
     if (left > 3) {
         out_ch_1 = 0;
