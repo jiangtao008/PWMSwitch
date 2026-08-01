@@ -8,8 +8,10 @@
  * │  CH2 [======]    │  2   [==    ]    │
  * │  CH3 [=     ]    │  3   [======]    │
  * │  CH4 [  ==  ]    │  4   [=     ]    │
- * │                   │  L:+1234         │
- * │                   │  R:-5678         │
+ * ├──────────────────┴──────────────────┤
+ * │  ██████████░░░░░░│░░░░░░██████████  │  ← speed bar (y=56..63)
+ * │  ◄── left ──────►│◄──── right ───►  │
+ * │  forward → center│center ← forward  │
  * └──────────────────┴──────────────────┘
  */
 
@@ -26,17 +28,17 @@ extern "C" {
 void Display_Init(void);
 
 /**
- * @brief  Render one full frame (bars + speed overlay, single flush).
- * @param  in_pct     Input  channels 1~8, 0~100 (%)
- * @param  out_pct    Output channels 1~4, 0~100 (%)
- * @param  out_dig    Output channels 5~12, 0 or 1
- * @param  left_pos   Left  motor encoder counts (signed)
- * @param  right_pos  Right motor encoder counts (signed)
+ * @brief  Render one full frame (bars + speed progress bar, single flush).
+ * @param  in_pct      Input  channels 1~8, 0~100 (%)
+ * @param  out_pct     Output channels 1~4, 0~100 (%)
+ * @param  out_dig     Output channels 5~12, 0 or 1
+ * @param  left_speed  Left  motor commanded speed, -100..+100
+ * @param  right_speed Right motor commanded speed, -100..+100
  */
 void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_pct[4],
                     const uint8_t out_dig[8],
-                    int32_t left_pos, int32_t right_pos);
+                    int16_t left_speed, int16_t right_speed);
 
 #ifdef __cplusplus
 }

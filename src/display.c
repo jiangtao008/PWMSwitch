@@ -5,8 +5,6 @@
 
 #include "display.h"
 #include "ssd1306.h"
-#include <string.h>
-#include <stdio.h>
 
 /* ── Layout constants ──────────────────────────────────────────────── */
 #define ROW_H       8
@@ -18,6 +16,11 @@
 #define RIGHT_X     64
 #define IN_CH       4       /* 输入只显示 CH1~CH4 */
 #define OUT_CH      4       /* 输出只显示 PWM CH1~CH4 */
+
+#define SPEED_BAR_Y 56      /* speed bar y (bottom 8 rows) */
+#define SPEED_BAR_H 8
+#define SPEED_MAX   64      /* half screen = max bar width in pixels */
+#define SPEED_SCALE 100     /* speed value range (0..100%) */
 
 /* ── Draw one bar row ──────────────────────────────────────────────── */
 
@@ -36,6 +39,61 @@ static void draw_bar(uint8_t x0, uint8_t y0, uint8_t pct)
     }
 }
 
+/* ── Draw speed progress bar (one side) ────────────────────────────── */
+/**
+ * @brief  Draw a horizontal speed bar that fills toward the center.
+ * @param  speed    Signed speed, -100..+100.
+ * @param  is_right 0 = left half (x=0..63), 1 = right half (x=64..127).
+ *
+ * Left  half: forward (+) fills from left edge  rightward → center.
+ *             reverse (-) fills from center      leftward  → edge.
+ * Right half: forward (+) fills from right edge  leftward  → center.
+ *             reverse (-) fills from center      rightward → edge.
+ */
+static void draw_speed_bar(int16_t speed, uint8_t is_right)
+{
+    uint8_t abs_w;
+    uint8_t x;
+    uint8_t y = SPEED_BAR_Y;
+
+    /* Clamp */
+    if (speed > SPEED_SCALE)  speed = SPEED_SCALE;
+    if (speed < -SPEED_SCALE) speed = -SPEED_SCALE;
+
+    /* Compute bar width from absolute speed */
+    if (speed > 0) {
+        abs_w = (uint16_t)speed * SPEED_MAX / (uint16_t)SPEED_SCALE;
+    } else if (speed < 0) {
+        abs_w = (uint16_t)(-speed) * SPEED_MAX / (uint16_t)SPEED_SCALE;
+    } else {
+        return;  /* zero speed → draw nothing */
+    }
+    if (abs_w > SPEED_MAX) abs_w = SPEED_MAX;
+    if (abs_w == 0) return;
+
+    if (is_right) {
+        /* Right half: x ∈ [64, 127] */
+        if (speed > 0) {
+            /* Forward: bar grows from right edge (127) leftward toward center */
+            x = 127 - abs_w + 1;
+        } else {
+            /* Reverse: bar grows from center (64) rightward toward edge */
+            x = 64;
+        }
+    } else {
+        /* Left half: x ∈ [0, 63] */
+        if (speed > 0) {
+            /* Forward: bar grows from left edge (0) rightward toward center */
+            x = 0;
+        } else {
+            /* Reverse: bar grows from center (63) leftward toward edge */
+            x = 63 - abs_w + 1;
+        }
+    }
+
+    SSD1306_FillRect(x, y, abs_w, SPEED_BAR_H, 1);
+}
+
 /* ── Public ────────────────────────────────────────────────────────── */
 
 void Display_Init(void)
@@ -46,7 +104,7 @@ void Display_Init(void)
 void Display_Update(const uint8_t in_pct[8],
                     const uint8_t out_pct[4],
                     const uint8_t out_dig[8],
-                    int32_t left_pos, int32_t right_pos)
+                    int16_t left_speed, int16_t right_speed)
 {
     (void)out_dig;      /* 不用数字输出显示 */
 
@@ -69,14 +127,10 @@ void Display_Update(const uint8_t in_pct[8],
         draw_bar(RIGHT_X + BAR_X_L, y0, out_pct[i]);
     }
 
-    /* ── Speed overlay (rows 6~7 of right panel) ───────────── */
-    char buf[13];
-
-    snprintf(buf, sizeof(buf), "L:%+6ld", left_pos);
-    SSD1306_DrawString(64, 48, buf);
-
-    snprintf(buf, sizeof(buf), "R:%+6ld", right_pos);
-    SSD1306_DrawString(64, 56, buf);
+    /* ── Speed progress bar (bottom 8 rows, full width) ──────── */
+    SSD1306_HLine(0, SPEED_BAR_Y - 1, SSD1306_WIDTH, 1);  /* top border */
+    draw_speed_bar(left_speed, 0);    /* left  half: x=0..63 */
+    draw_speed_bar(right_speed, 1);   /* right half: x=64..127 */
 
     /* ── Single flush — no flicker ──────────────────────────── */
     SSD1306_Flush();

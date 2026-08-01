@@ -121,14 +121,11 @@ void Control_Update(void)
     PWM_Output_Set(3, out_ch_4);
 
     /* ── Update display ──────────────────────────────────────── */
-    int32_t l_pos = SpeedSensor_GetPosition(MOTOR_LEFT);
-    int32_t r_pos = SpeedSensor_GetPosition(MOTOR_RIGHT);
-
     const uint8_t in_arr[8]   = {in_ch_1, in_ch_2, in_ch_3, in_ch_4,
                                  in_ch_5, in_ch_6, in_ch_7, in_ch_8};
     const uint8_t out_pct[4]  = {out_ch_1, out_ch_2, out_ch_3, out_ch_4};
     const uint8_t out_dig[8]  = {0, 0, 0, 0,
                                  out_ch_5, out_ch_6, out_ch_7, out_ch_8};
 
-    Display_Update(in_arr, out_pct, out_dig, l_pos, r_pos);
+    Display_Update(in_arr, out_pct, out_dig, left, right);
 }
